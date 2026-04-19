@@ -53,8 +53,7 @@ class MainActivity : FlutterActivity() {
                                 val config = EngineConfig(
                                     modelPath = modelPath,
                                     backend = Backend.CPU(),
-                                    visionBackend = Backend.GPU(),
-                                    cacheDir = context.cacheDir.path,
+                                    visionBackend = Backend.CPU(),
                                 )
                                 val eng = Engine(config)
                                 eng.initialize()

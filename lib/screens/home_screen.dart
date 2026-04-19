@@ -178,21 +178,21 @@ class _HomeScreenState extends State<HomeScreen> {
                   _gemmaService.isInitialized
                       ? Icons.check_circle
                       : _isModelLoading
-                          ? Icons.hourglass_top
-                          : Icons.circle_outlined,
+                      ? Icons.hourglass_top
+                      : Icons.circle_outlined,
                   color: _gemmaService.isInitialized
                       ? Colors.green
                       : _isModelLoading
-                          ? Colors.orange
-                          : Colors.grey,
+                      ? Colors.orange
+                      : Colors.grey,
                 ),
                 const SizedBox(width: 8),
                 Text(
                   _gemmaService.isInitialized
                       ? 'モデル準備完了'
                       : _isModelLoading
-                          ? 'モデル読み込み中...'
-                          : 'モデル未読み込み',
+                      ? 'モデル読み込み中...'
+                      : 'モデル未読み込み',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ],
@@ -222,7 +222,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   child: SelectableText(
                     _modelDirectory ?? '読み込み中...',
-                    style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -303,7 +306,9 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         Expanded(
           child: ElevatedButton.icon(
-            onPressed: _isAnalyzing ? null : () => _pickImage(ImageSource.camera),
+            onPressed: _isAnalyzing
+                ? null
+                : () => _pickImage(ImageSource.camera),
             icon: const Icon(Icons.camera_alt, size: 18),
             label: const Text('撮影'),
           ),
@@ -311,8 +316,9 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(width: 8),
         Expanded(
           child: ElevatedButton.icon(
-            onPressed:
-                _isAnalyzing ? null : () => _pickImage(ImageSource.gallery),
+            onPressed: _isAnalyzing
+                ? null
+                : () => _pickImage(ImageSource.gallery),
             icon: const Icon(Icons.photo_library, size: 18),
             label: const Text('選択'),
           ),
@@ -320,8 +326,9 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(width: 8),
         Expanded(
           child: FilledButton.icon(
-            onPressed:
-                (_selectedImage != null && !_isAnalyzing) ? _analyzeFood : null,
+            onPressed: (_selectedImage != null && !_isAnalyzing)
+                ? _analyzeFood
+                : null,
             icon: const Icon(Icons.analytics, size: 18),
             label: const Text('分析'),
           ),
@@ -364,10 +371,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: Theme.of(context).colorScheme.primary,
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  '分析結果',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                Text('分析結果', style: Theme.of(context).textTheme.titleMedium),
               ],
             ),
             const Divider(),

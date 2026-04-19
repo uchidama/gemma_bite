@@ -38,12 +38,36 @@ samples, guidance on mobile development, and a full API reference.
 | | AndroidManifest.xml | カメラ権限、GPU ネイティブライブラリ |
 | **iOS** | Info.plist | カメラ・フォトライブラリ使用説明 |
 
+### モデルのダウンロード
+
+LiteRT-LM 用のモデル
+https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm
+
+```
+# ツールが入っていない場合はインストール
+pip install huggingface_hub
+
+# ログイン（トークンが必要な場合があります）
+huggingface-cli login
+
+# モデルを丸ごとダウンロード
+huggingface-cli download litert-community/gemma-4-E2B-it-litert-lm --local-dir ./models/gemma-4-E2B-it-litert-lm
+
+```
+
+
 ### アプリの使い方
 
 1. **モデル配置**: Gemma-4-E2B の `.litertlm` ファイルを以下にadbで転送
-   ```
-   adb push gemma-4-E2B-it.litertlm /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models/
-   ```
+
+```
+# ディレクトリ作成
+adb shell mkdir -p /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models
+
+# モデルファイルを転送（ダウンロードしたファイルのパスに合わせて調整）
+adb push ~/FlutterProjects/gemma_bite/models/gemma-4-E2B-it-litert-lm/gemma-4-E2B-it.litertlm /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models/
+```
+
 2. **モデル読み込み**: アプリ内でモデルファイルを選択して初期化
 3. **撮影/選択** → **分析** → Gemma 4 がオンデバイスで推論し、カロリー・栄養素・アルコール・アドバイスを表示
 
