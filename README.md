@@ -77,3 +77,74 @@ adb push ~/FlutterProjects/gemma_bite/models/gemma-4-E2B-it-litert-lm/gemma-4-E2
 - `SamplerConfig` の `topP`/`temperature` の型が `Double` か `Float` かは、実際のビルド時に調整が必要な可能性があります
 
 変更を行いました。
+
+### 実行
+
+```
+flutter run
+```
+
+```
+flutter devices
+flutter run -d 57060DLCQ000P3
+```
+
+#### インストールだけして apk を作りたい
+
+```
+flutter build apk
+flutter install -d 57060DLCQ000P3
+```
+
+# スクリーンショットを取得
+
+## 接続されているAndroid端末のスクリーンショットをローカルにとる
+
+```
+adb exec-out screencap -p > screenshot.png
+```
+
+```
+adb devices
+adb shell ls /sdcard/Pictures/Screenshots | tail
+```
+
+## スクリーンショットから最新の１枚を取得
+
+```
+latest=$(adb shell ls /sdcard/Pictures/Screenshots | tail -n 1 | tr -d '\r')
+adb pull "/sdcard/Pictures/Screenshots/$latest" .
+```
+
+# 仕様案
+
+## 主要な栄養素の集計
+
+### 黄金の「PFCバランス」（最優先）
+
+- タンパク質 (Protein)
+- 脂質 (Fat)
+- 炭水化物 (Carbohydrate)
+- 総カロリー
+- 塩分
+
+### 嗜好品系
+
+- カフェイン
+- アルコール
+
+## 食事の時系列の記録
+
+　写真の撮影時間から、どの時間の食事か取れるだろう。これを記録。一覧でみれる
+
+## 食事内容について、正確な情報がわからないときはGemmaから質問してくる。ユーザーが文言で答えてチャットでやりとりすることで情報は正確になる
+
+## １日の摂取カロリー、栄養が集計される
+
+## 現在の身長、体重を入力
+
+　アプリ起動時か？
+
+
+・Googleカレンダーとの連携。
+　持久力が求められる運動をする場合: 「明日は長距離を走る予定なら、もう少し炭水化物を多めに摂っておきましょう」といった助言。

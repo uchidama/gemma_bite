@@ -61,13 +61,10 @@ class MainActivity : FlutterActivity() {
                                 val conv = eng.createConversation(
                                     ConversationConfig(
                                         systemInstruction = Contents.of(
-                                            "あなたは栄養分析の専門家です。食事や飲み物の写真が提示されたら、以下を提供してください：\n" +
-                                            "1. 推定総カロリー\n" +
-                                            "2. 主要栄養素の内訳（タンパク質、脂質、炭水化物をグラム単位で）\n" +
-                                            "3. 含まれる主なビタミン・ミネラル\n" +
-                                            "4. アルコール含有量（該当する場合、推定グラム数と標準ドリンク数）\n" +
-                                            "5. この食事に関する簡潔な健康アドバイス\n" +
-                                            "不確かな場合は概算範囲を使用してください。日本語で回答してください。"
+                                            "あなたは食事写真から栄養記録を作る専門家です。回答は必ずJSONのみで、説明文やMarkdownを含めません。\n" +
+                                            "スキーマ: {\"foodName\": string, \"summary\": string, \"nutrition\": {\"caloriesKcal\": number, \"proteinG\": number, \"fatG\": number, \"carbohydrateG\": number, \"saltG\": number, \"caffeineMg\": number, \"alcoholG\": number}, \"confidence\": number, \"questions\": string[]}\n" +
+                                            "nutritionは見える量から1食分として推定します。PFC、総カロリー、塩分を最優先し、カフェインとアルコールは該当しない場合0にします。\n" +
+                                            "正確に判断できない食材、量、飲み物、調味料がある場合はquestionsに日本語の短い確認質問を最大3件入れます。質問が不要なら空配列にします。confidenceは0から1です。"
                                         ),
                                         samplerConfig = SamplerConfig(
                                             topK = 40,
@@ -105,13 +102,48 @@ class MainActivity : FlutterActivity() {
                                 val response = conv.sendMessage(
                                     Contents.of(
                                         Content.ImageFile(imagePath),
-                                        Content.Text("この食事の写真を分析してください。"),
+                                        Content.Text(
+                                            "この食事写真を分析し、指定スキーマのJSONだけを返してください。見えない部分は推定し、不明点はquestionsに入れてください。"
+                                        ),
                                     )
                                 )
                                 mainHandler.post { result.success(response.toString()) }
                             } catch (e: Exception) {
                                 mainHandler.post {
                                     result.error("ANALYZE_ERROR", e.message, e.stackTraceToString())
+                                }
+                            }
+                        }
+                    }
+
+                    "refineMeal" -> {
+                        val currentMealJson = call.argument<String>("currentMealJson")
+                        val userAnswer = call.argument<String>("userAnswer")
+                        if (currentMealJson == null || userAnswer == null) {
+                            result.error("INVALID_ARG", "currentMealJson and userAnswer are required", null)
+                            return@setMethodCallHandler
+                        }
+                        val conv = conversation
+                        if (conv == null) {
+                            result.error("NOT_INITIALIZED", "モデルが初期化されていません", null)
+                            return@setMethodCallHandler
+                        }
+
+                        scope.launch {
+                            try {
+                                val response = conv.sendMessage(
+                                    Contents.of(
+                                        Content.Text(
+                                            "現在の食事JSON: $currentMealJson\n" +
+                                            "ユーザーの回答: $userAnswer\n" +
+                                            "回答を反映して栄養値とsummaryとquestionsを更新し、同じスキーマのJSONだけを返してください。"
+                                        ),
+                                    )
+                                )
+                                mainHandler.post { result.success(response.toString()) }
+                            } catch (e: Exception) {
+                                mainHandler.post {
+                                    result.error("REFINE_ERROR", e.message, e.stackTraceToString())
                                 }
                             }
                         }
