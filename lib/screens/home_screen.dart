@@ -35,13 +35,11 @@ class _HomeScreenState extends State<HomeScreen> {
   final _imagePicker = ImagePicker();
   final _repository = MealRepository();
   final _photoTakenAtReader = PhotoTakenAtReader();
-  final _chatController = TextEditingController();
 
   bool _isPreparingModel = true;
   bool _isModelLoading = false;
   bool _isLogLoading = true;
   bool _isAnalyzing = false;
-  bool _isRefining = false;
   bool _hasTriedAutoModelLoad = false;
   bool _hasPromptedForProfile = false;
   String? _modelDirectory;
@@ -197,86 +195,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _sendClarification(MealEntry meal) async {
-    final answer = _chatController.text.trim();
-    if (answer.isEmpty) return;
-    _chatController.clear();
-
-    final userMessage = MealMessage(
-      role: 'user',
-      text: answer,
-      createdAt: DateTime.now(),
-    );
-    final pendingMeal = meal.copyWith(
-      messages: [...meal.messages, userMessage],
-    );
-    await _replaceMeal(pendingMeal);
-
-    if (!_gemmaService.isInitialized) {
-      await _replaceMeal(
-        pendingMeal.copyWith(
-          messages: [
-            ...pendingMeal.messages,
-            MealMessage(
-              role: 'assistant',
-              text: 'モデルを読み込むと、この回答を使って栄養値を再計算できます。',
-              createdAt: DateTime.now(),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
-    setState(() => _isRefining = true);
-    try {
-      final response = await _gemmaService.refineMeal(
-        currentMealJson: jsonEncode(pendingMeal.toJson()),
-        userAnswer: answer,
-      );
-      final refined = MealEntry.fromGemmaJson(
-        imagePath: meal.imagePath,
-        eatenAt: meal.eatenAt,
-        response: response,
-      );
-      await _replaceMeal(
-        pendingMeal.copyWith(
-          foodName: refined.foodName,
-          summary: refined.summary,
-          nutrition: refined.nutrition,
-          confidence: refined.confidence,
-          questions: refined.questions,
-          rawGemmaResponse: response,
-          messages: [
-            ...pendingMeal.messages,
-            MealMessage(
-              role: 'assistant',
-              text: refined.questions.isEmpty
-                  ? '回答を反映して栄養値を更新しました。'
-                  : refined.questions.join('\n'),
-              createdAt: DateTime.now(),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      await _replaceMeal(
-        pendingMeal.copyWith(
-          messages: [
-            ...pendingMeal.messages,
-            MealMessage(
-              role: 'assistant',
-              text: '再計算に失敗しました: $e',
-              createdAt: DateTime.now(),
-            ),
-          ],
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _isRefining = false);
-    }
-  }
-
   Future<void> _replaceMeal(MealEntry updatedMeal) async {
     final meals =
         _log.meals
@@ -302,20 +220,8 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  MealEntry? get _selectedMeal {
-    return _selectedMealFrom(_log.meals);
-  }
-
-  MealEntry? _selectedMealFrom(List<MealEntry> meals) {
-    for (final meal in meals) {
-      if (meal.id == _selectedMealId) return meal;
-    }
-    return meals.isEmpty ? null : meals.first;
-  }
-
   @override
   void dispose() {
-    _chatController.dispose();
     _gemmaService.dispose();
     super.dispose();
   }
@@ -323,7 +229,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final dailyOverview = _dailyOverview();
-    final selectedMeal = _selectedMealFrom(dailyOverview.meals);
 
     if (!_gemmaService.isInitialized) {
       return _buildModelPreparationScreen();
@@ -376,10 +281,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 12),
                   _buildDailySummary(dailyOverview),
-                  if (selectedMeal != null) ...[
-                    const SizedBox(height: 12),
-                    _buildMealDetail(selectedMeal),
-                  ],
                   if (_error != null) ...[
                     const SizedBox(height: 12),
                     _buildError(),
@@ -646,17 +547,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _metricChip(String label, double value, String unit, IconData icon) {
-    final formatted = value >= 100
-        ? value.round().toString()
-        : value.toStringAsFixed(1);
-    return Chip(
-      avatar: Icon(icon, size: 18),
-      label: Text('$label $formatted$unit'),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-    );
-  }
-
   Widget _buildImageSection() {
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -763,7 +653,7 @@ class _HomeScreenState extends State<HomeScreen> {
               )
             else
               ...meals.map((meal) {
-                final selected = meal.id == _selectedMeal?.id;
+                final selected = meal.id == _selectedMealId;
                 return ListTile(
                   selected: selected,
                   contentPadding: EdgeInsets.zero,
@@ -778,7 +668,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           Icons.check_circle_outline,
                           color: Colors.green,
                         ),
-                  onTap: () => setState(() => _selectedMealId = meal.id),
+                  onTap: () => _openMealDetail(meal),
                 );
               }),
           ],
@@ -798,113 +688,15 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildMealDetail(MealEntry meal) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(meal.foodName, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 4),
-            Text(_formatDateTime(meal.eatenAt)),
-            if (meal.summary.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(meal.summary),
-            ],
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _metricChip(
-                  '総カロリー',
-                  meal.nutrition.caloriesKcal,
-                  'kcal',
-                  Icons.bolt,
-                ),
-                _metricChip(
-                  'P',
-                  meal.nutrition.proteinG,
-                  'g',
-                  Icons.fitness_center,
-                ),
-                _metricChip('F', meal.nutrition.fatG, 'g', Icons.water_drop),
-                _metricChip(
-                  'C',
-                  meal.nutrition.carbohydrateG,
-                  'g',
-                  Icons.rice_bowl,
-                ),
-                _metricChip('塩分', meal.nutrition.saltG, 'g', Icons.grain),
-                _metricChip(
-                  'カフェイン',
-                  meal.nutrition.caffeineMg,
-                  'mg',
-                  Icons.coffee,
-                ),
-                _metricChip(
-                  'アルコール',
-                  meal.nutrition.alcoholG,
-                  'g',
-                  Icons.local_bar,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            LinearProgressIndicator(value: meal.confidence),
-            const SizedBox(height: 6),
-            Text('推定の確信度 ${(meal.confidence * 100).round()}%'),
-            const Divider(height: 28),
-            Text('Gemmaとの確認', style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: 8),
-            ...meal.messages.map(_buildMessageBubble),
-            if (_isRefining) const LinearProgressIndicator(),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _chatController,
-                    minLines: 1,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      hintText: '例: ご飯は小盛り、味噌汁あり',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton.filled(
-                  onPressed: _isRefining
-                      ? null
-                      : () => _sendClarification(meal),
-                  icon: const Icon(Icons.send),
-                  tooltip: '送信',
-                ),
-              ],
-            ),
-          ],
+  Future<void> _openMealDetail(MealEntry meal) async {
+    setState(() => _selectedMealId = meal.id);
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => MealDetailScreen(
+          meal: meal,
+          gemmaService: _gemmaService,
+          onMealUpdated: _replaceMeal,
         ),
-      ),
-    );
-  }
-
-  Widget _buildMessageBubble(MealMessage message) {
-    final isUser = message.role == 'user';
-    return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(10),
-        constraints: const BoxConstraints(maxWidth: 320),
-        decoration: BoxDecoration(
-          color: isUser
-              ? Theme.of(context).colorScheme.primaryContainer
-              : Colors.grey[100],
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(message.text),
       ),
     );
   }
@@ -1024,6 +816,266 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  String _formatDateTime(DateTime? dateTime) {
+    if (dateTime == null) return '未取得';
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${dateTime.year}/${two(dateTime.month)}/${two(dateTime.day)} ${two(dateTime.hour)}:${two(dateTime.minute)}';
+  }
+}
+
+class MealDetailScreen extends StatefulWidget {
+  const MealDetailScreen({
+    super.key,
+    required this.meal,
+    required this.gemmaService,
+    required this.onMealUpdated,
+  });
+
+  final MealEntry meal;
+  final GemmaService gemmaService;
+  final Future<void> Function(MealEntry meal) onMealUpdated;
+
+  @override
+  State<MealDetailScreen> createState() => _MealDetailScreenState();
+}
+
+class _MealDetailScreenState extends State<MealDetailScreen> {
+  final _chatController = TextEditingController();
+
+  late MealEntry _meal;
+  bool _isRefining = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _meal = widget.meal;
+  }
+
+  @override
+  void dispose() {
+    _chatController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _sendClarification() async {
+    final answer = _chatController.text.trim();
+    if (answer.isEmpty) return;
+    _chatController.clear();
+
+    final userMessage = MealMessage(
+      role: 'user',
+      text: answer,
+      createdAt: DateTime.now(),
+    );
+    final pendingMeal = _meal.copyWith(
+      messages: [..._meal.messages, userMessage],
+    );
+    await _replaceMeal(pendingMeal);
+
+    if (!widget.gemmaService.isInitialized) {
+      await _replaceMeal(
+        pendingMeal.copyWith(
+          messages: [
+            ...pendingMeal.messages,
+            MealMessage(
+              role: 'assistant',
+              text: 'モデルを読み込むと、この回答を使って栄養値を再計算できます。',
+              createdAt: DateTime.now(),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isRefining = true);
+    try {
+      final response = await widget.gemmaService.refineMeal(
+        currentMealJson: jsonEncode(pendingMeal.toJson()),
+        userAnswer: answer,
+      );
+      final refined = MealEntry.fromGemmaJson(
+        imagePath: _meal.imagePath,
+        eatenAt: _meal.eatenAt,
+        response: response,
+      );
+      await _replaceMeal(
+        pendingMeal.copyWith(
+          foodName: refined.foodName,
+          summary: refined.summary,
+          nutrition: refined.nutrition,
+          confidence: refined.confidence,
+          questions: refined.questions,
+          rawGemmaResponse: response,
+          messages: [
+            ...pendingMeal.messages,
+            MealMessage(
+              role: 'assistant',
+              text: refined.questions.isEmpty
+                  ? '回答を反映して栄養値を更新しました。'
+                  : refined.questions.join('\n'),
+              createdAt: DateTime.now(),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      await _replaceMeal(
+        pendingMeal.copyWith(
+          messages: [
+            ...pendingMeal.messages,
+            MealMessage(
+              role: 'assistant',
+              text: '再計算に失敗しました: $e',
+              createdAt: DateTime.now(),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isRefining = false);
+    }
+  }
+
+  Future<void> _replaceMeal(MealEntry meal) async {
+    if (mounted) setState(() => _meal = meal);
+    await widget.onMealUpdated(meal);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('食事詳細'),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: _buildMealDetail(_meal),
+      ),
+    );
+  }
+
+  Widget _buildMealDetail(MealEntry meal) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(meal.foodName, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(_formatDateTime(meal.eatenAt)),
+            if (meal.summary.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(meal.summary),
+            ],
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _metricChip(
+                  '総カロリー',
+                  meal.nutrition.caloriesKcal,
+                  'kcal',
+                  Icons.bolt,
+                ),
+                _metricChip(
+                  'P',
+                  meal.nutrition.proteinG,
+                  'g',
+                  Icons.fitness_center,
+                ),
+                _metricChip('F', meal.nutrition.fatG, 'g', Icons.water_drop),
+                _metricChip(
+                  'C',
+                  meal.nutrition.carbohydrateG,
+                  'g',
+                  Icons.rice_bowl,
+                ),
+                _metricChip('塩分', meal.nutrition.saltG, 'g', Icons.grain),
+                _metricChip(
+                  'カフェイン',
+                  meal.nutrition.caffeineMg,
+                  'mg',
+                  Icons.coffee,
+                ),
+                _metricChip(
+                  'アルコール',
+                  meal.nutrition.alcoholG,
+                  'g',
+                  Icons.local_bar,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            LinearProgressIndicator(value: meal.confidence),
+            const SizedBox(height: 6),
+            Text('推定の確信度 ${(meal.confidence * 100).round()}%'),
+            const Divider(height: 28),
+            Text('Gemmaとの確認', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 8),
+            ...meal.messages.map(_buildMessageBubble),
+            if (_isRefining) const LinearProgressIndicator(),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _chatController,
+                    minLines: 1,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      hintText: '例: ご飯は小盛り、味噌汁あり',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filled(
+                  onPressed: _isRefining ? null : _sendClarification,
+                  icon: const Icon(Icons.send),
+                  tooltip: '送信',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _metricChip(String label, double value, String unit, IconData icon) {
+    final formatted = value >= 100
+        ? value.round().toString()
+        : value.toStringAsFixed(1);
+    return Chip(
+      avatar: Icon(icon, size: 18),
+      label: Text('$label $formatted$unit'),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+    );
+  }
+
+  Widget _buildMessageBubble(MealMessage message) {
+    final isUser = message.role == 'user';
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(10),
+        constraints: const BoxConstraints(maxWidth: 320),
+        decoration: BoxDecoration(
+          color: isUser
+              ? Theme.of(context).colorScheme.primaryContainer
+              : Colors.grey[100],
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(message.text),
       ),
     );
   }
