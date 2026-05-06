@@ -30,6 +30,30 @@ class _DailyOverview {
   final NutritionTotals totals;
 }
 
+class _WeeklyDaySummary {
+  const _WeeklyDaySummary({
+    required this.day,
+    required this.meals,
+    required this.caloriesKcal,
+  });
+
+  final DateTime day;
+  final List<MealEntry> meals;
+  final double caloriesKcal;
+}
+
+class _WeeklyOverview {
+  const _WeeklyOverview({
+    required this.days,
+    required this.averageCaloriesKcal,
+    required this.photoCount,
+  });
+
+  final List<_WeeklyDaySummary> days;
+  final double averageCaloriesKcal;
+  final int photoCount;
+}
+
 class _HomeScreenState extends State<HomeScreen> {
   final _gemmaService = GemmaService();
   final _imagePicker = ImagePicker();
@@ -229,6 +253,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final dailyOverview = _dailyOverview();
+    final weeklyOverview = _weeklyOverview();
 
     if (!_gemmaService.isInitialized) {
       return _buildModelPreparationScreen();
@@ -281,6 +306,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 12),
                   _buildDailySummary(dailyOverview),
+                  const SizedBox(height: 12),
+                  _buildWeeklySummary(weeklyOverview),
                   if (_error != null) ...[
                     const SizedBox(height: 12),
                     _buildError(),
@@ -408,6 +435,33 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  _WeeklyOverview _weeklyOverview() {
+    final today = DateTime.now();
+    final days = List.generate(7, (index) {
+      final day = today.subtract(Duration(days: index));
+      final meals = _log.mealsForDay(day);
+      final calories = meals.fold<double>(
+        0,
+        (total, meal) => total + meal.nutrition.caloriesKcal,
+      );
+      return _WeeklyDaySummary(day: day, meals: meals, caloriesKcal: calories);
+    });
+    final totalCalories = days.fold<double>(
+      0,
+      (total, day) => total + day.caloriesKcal,
+    );
+    final photoCount = days.fold<int>(
+      0,
+      (total, day) => total + day.meals.length,
+    );
+
+    return _WeeklyOverview(
+      days: days,
+      averageCaloriesKcal: totalCalories / days.length,
+      photoCount: photoCount,
+    );
+  }
+
   Widget _buildDailySummary(_DailyOverview overview) {
     return Card(
       child: Padding(
@@ -479,6 +533,56 @@ class _HomeScreenState extends State<HomeScreen> {
               color: Colors.deepPurple[400]!,
               showDivider: false,
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWeeklySummary(_WeeklyOverview overview) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                '過去7日間',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _summaryValueRow(
+              label: '摂取カロリーの1日平均',
+              valueText: '${overview.averageCaloriesKcal.round()}kcal',
+              icon: Icons.timeline,
+              color: Colors.orange[700]!,
+            ),
+            _summaryValueRow(
+              label: '写真投稿数',
+              valueText: '${overview.photoCount}枚',
+              icon: Icons.photo_library,
+              color: Colors.blue[600]!,
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+              child: Text(
+                '各日の摂取カロリー',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ),
+            ...overview.days.map((day) {
+              final isLast = day == overview.days.last;
+              return _summaryValueRow(
+                label: _formatDayLabel(day.day),
+                valueText: '${day.caloriesKcal.round()}kcal',
+                icon: Icons.calendar_today,
+                color: Theme.of(context).colorScheme.primary,
+                showDivider: !isLast,
+              );
+            }),
           ],
         ),
       ),
@@ -824,6 +928,12 @@ class _HomeScreenState extends State<HomeScreen> {
     if (dateTime == null) return '未取得';
     String two(int value) => value.toString().padLeft(2, '0');
     return '${dateTime.year}/${two(dateTime.month)}/${two(dateTime.day)} ${two(dateTime.hour)}:${two(dateTime.minute)}';
+  }
+
+  String _formatDayLabel(DateTime dateTime) {
+    const weekdays = ['月', '火', '水', '木', '金', '土', '日'];
+    final weekday = weekdays[dateTime.weekday - 1];
+    return '${dateTime.month}/${dateTime.day} ($weekday)';
   }
 }
 
