@@ -16,6 +16,20 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
+class _DailyOverview {
+  const _DailyOverview({
+    required this.mealTitle,
+    required this.intakeTitle,
+    required this.meals,
+    required this.totals,
+  });
+
+  final String mealTitle;
+  final String intakeTitle;
+  final List<MealEntry> meals;
+  final NutritionTotals totals;
+}
+
 class _HomeScreenState extends State<HomeScreen> {
   final _gemmaService = GemmaService();
   final _imagePicker = ImagePicker();
@@ -289,10 +303,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   MealEntry? get _selectedMeal {
-    for (final meal in _log.meals) {
+    return _selectedMealFrom(_log.meals);
+  }
+
+  MealEntry? _selectedMealFrom(List<MealEntry> meals) {
+    for (final meal in meals) {
       if (meal.id == _selectedMealId) return meal;
     }
-    return _log.meals.isEmpty ? null : _log.meals.first;
+    return meals.isEmpty ? null : meals.first;
   }
 
   @override
@@ -304,7 +322,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final selectedMeal = _selectedMeal;
+    final dailyOverview = _dailyOverview();
+    final selectedMeal = _selectedMealFrom(dailyOverview.meals);
 
     if (!_gemmaService.isInitialized) {
       return _buildModelPreparationScreen();
@@ -351,9 +370,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     _buildLoadingIndicator(),
                   ],
                   const SizedBox(height: 16),
-                  _buildDailySummary(_log.mealsForDay(DateTime.now())),
+                  _buildMealTimeline(
+                    dailyOverview.meals,
+                    title: dailyOverview.mealTitle,
+                  ),
                   const SizedBox(height: 12),
-                  _buildMealTimeline(_log.meals, title: '食事の記録'),
+                  _buildDailySummary(dailyOverview),
                   if (selectedMeal != null) ...[
                     const SizedBox(height: 12),
                     _buildMealDetail(selectedMeal),
@@ -465,8 +487,27 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildDailySummary(List<MealEntry> meals) {
-    final totals = _log.totalsForDay(DateTime.now());
+  _DailyOverview _dailyOverview() {
+    final today = DateTime.now();
+    final yesterday = today.subtract(const Duration(days: 1));
+    final todayMeals = _log.mealsForDay(today);
+    final yesterdayMeals = _log.mealsForDay(yesterday);
+    final usesYesterday = todayMeals.isEmpty && yesterdayMeals.isNotEmpty;
+    final meals = usesYesterday ? yesterdayMeals : todayMeals;
+    final totals = meals.fold(
+      const NutritionTotals.empty(),
+      (total, meal) => total + meal.nutrition,
+    );
+
+    return _DailyOverview(
+      mealTitle: usesYesterday ? '昨日の食事の記録' : '今日の食事の記録',
+      intakeTitle: usesYesterday ? '昨日の摂取量' : '今日の摂取量',
+      meals: meals,
+      totals: totals,
+    );
+  }
+
+  Widget _buildDailySummary(_DailyOverview overview) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -476,70 +517,66 @@ class _HomeScreenState extends State<HomeScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Text(
-                '1日の摂取量',
+                overview.intakeTitle,
                 style: Theme.of(context).textTheme.titleMedium,
               ),
             ),
             const SizedBox(height: 8),
+            _summaryValueRow(
+              label: '写真登録数',
+              valueText: '${overview.meals.length}枚',
+              icon: Icons.photo_camera,
+              color: Colors.blue[600]!,
+            ),
             _summaryRow(
               label: '総カロリー',
-              value: totals.caloriesKcal,
+              value: overview.totals.caloriesKcal,
               unit: 'kcal',
               icon: Icons.bolt,
               color: Colors.amber[700]!,
             ),
             _summaryRow(
               label: 'タンパク質',
-              value: totals.proteinG,
+              value: overview.totals.proteinG,
               unit: 'g',
               icon: Icons.fitness_center,
               color: Colors.green[700]!,
             ),
             _summaryRow(
               label: '脂質',
-              value: totals.fatG,
+              value: overview.totals.fatG,
               unit: 'g',
               icon: Icons.water_drop,
               color: Colors.teal[700]!,
             ),
             _summaryRow(
               label: '炭水化物',
-              value: totals.carbohydrateG,
+              value: overview.totals.carbohydrateG,
               unit: 'g',
               icon: Icons.rice_bowl,
               color: Colors.lightGreen[700]!,
             ),
             _summaryRow(
               label: '塩分',
-              value: totals.saltG,
+              value: overview.totals.saltG,
               unit: 'g',
               icon: Icons.grain,
               color: Colors.blueGrey[600]!,
             ),
             _summaryRow(
               label: 'カフェイン',
-              value: totals.caffeineMg,
+              value: overview.totals.caffeineMg,
               unit: 'mg',
               icon: Icons.coffee,
               color: Colors.brown[600]!,
             ),
             _summaryRow(
               label: 'アルコール',
-              value: totals.alcoholG,
+              value: overview.totals.alcoholG,
               unit: 'g',
               icon: Icons.local_bar,
               color: Colors.deepPurple[400]!,
               showDivider: false,
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                '${meals.length}件の食事を記録済み',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
             ),
           ],
         ),
@@ -559,6 +596,22 @@ class _HomeScreenState extends State<HomeScreen> {
         ? value.round().toString()
         : value.toStringAsFixed(1);
 
+    return _summaryValueRow(
+      label: label,
+      valueText: '$formatted$unit',
+      icon: icon,
+      color: color,
+      showDivider: showDivider,
+    );
+  }
+
+  Widget _summaryValueRow({
+    required String label,
+    required String valueText,
+    required IconData icon,
+    required Color color,
+    bool showDivider = true,
+  }) {
     return Column(
       children: [
         Padding(
@@ -574,7 +627,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               Text(
-                '$formatted$unit',
+                valueText,
                 textAlign: TextAlign.right,
                 style: Theme.of(
                   context,
