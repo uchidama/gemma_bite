@@ -469,35 +469,127 @@ class _HomeScreenState extends State<HomeScreen> {
     final totals = _log.totalsForDay(DateTime.now());
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(vertical: 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('1日の摂取量', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _metricChip('総カロリー', totals.caloriesKcal, 'kcal', Icons.bolt),
-                _metricChip(
-                  'タンパク質',
-                  totals.proteinG,
-                  'g',
-                  Icons.fitness_center,
-                ),
-                _metricChip('脂質', totals.fatG, 'g', Icons.water_drop),
-                _metricChip('炭水化物', totals.carbohydrateG, 'g', Icons.rice_bowl),
-                _metricChip('塩分', totals.saltG, 'g', Icons.grain),
-                _metricChip('カフェイン', totals.caffeineMg, 'mg', Icons.coffee),
-                _metricChip('アルコール', totals.alcoholG, 'g', Icons.local_bar),
-              ],
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                '1日の摂取量',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
             ),
-            const SizedBox(height: 12),
-            Text('${meals.length}件の食事を記録済み'),
+            const SizedBox(height: 8),
+            _summaryRow(
+              label: '総カロリー',
+              value: totals.caloriesKcal,
+              unit: 'kcal',
+              icon: Icons.bolt,
+              color: Colors.amber[700]!,
+            ),
+            _summaryRow(
+              label: 'タンパク質',
+              value: totals.proteinG,
+              unit: 'g',
+              icon: Icons.fitness_center,
+              color: Colors.green[700]!,
+            ),
+            _summaryRow(
+              label: '脂質',
+              value: totals.fatG,
+              unit: 'g',
+              icon: Icons.water_drop,
+              color: Colors.teal[700]!,
+            ),
+            _summaryRow(
+              label: '炭水化物',
+              value: totals.carbohydrateG,
+              unit: 'g',
+              icon: Icons.rice_bowl,
+              color: Colors.lightGreen[700]!,
+            ),
+            _summaryRow(
+              label: '塩分',
+              value: totals.saltG,
+              unit: 'g',
+              icon: Icons.grain,
+              color: Colors.blueGrey[600]!,
+            ),
+            _summaryRow(
+              label: 'カフェイン',
+              value: totals.caffeineMg,
+              unit: 'mg',
+              icon: Icons.coffee,
+              color: Colors.brown[600]!,
+            ),
+            _summaryRow(
+              label: 'アルコール',
+              value: totals.alcoholG,
+              unit: 'g',
+              icon: Icons.local_bar,
+              color: Colors.deepPurple[400]!,
+              showDivider: false,
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                '${meals.length}件の食事を記録済み',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _summaryRow({
+    required String label,
+    required double value,
+    required String unit,
+    required IconData icon,
+    required Color color,
+    bool showDivider = true,
+  }) {
+    final formatted = value >= 100
+        ? value.round().toString()
+        : value.toStringAsFixed(1);
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Icon(icon, size: 24, color: color),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  label,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              Text(
+                '$formatted$unit',
+                textAlign: TextAlign.right,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
+        if (showDivider)
+          Divider(
+            height: 1,
+            indent: 56,
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+      ],
     );
   }
 
