@@ -198,7 +198,17 @@ class MealEntry {
     required DateTime eatenAt,
     required String response,
   }) {
-    final decoded = _decodeGemmaResponse(response);
+    Map<String, dynamic> decoded;
+    try {
+      decoded = _decodeGemmaResponse(response);
+    } on FormatException {
+      return _fromGemmaText(
+        imagePath: imagePath,
+        eatenAt: eatenAt,
+        response: response,
+      );
+    }
+
     final questions = (decoded['questions'] as List<dynamic>? ?? const [])
         .map((question) => question.toString())
         .where((question) => question.trim().isNotEmpty)
@@ -245,6 +255,138 @@ class MealEntry {
     final decoded = jsonDecode(jsonText);
     if (decoded is Map<String, dynamic>) return decoded;
     throw const FormatException('Gemma response is not a JSON object');
+  }
+
+  static MealEntry _fromGemmaText({
+    required String imagePath,
+    required DateTime eatenAt,
+    required String response,
+  }) {
+    final summary = _cleanResponse(response);
+    final questions = _extractQuestions(summary);
+    final nutrition = NutritionTotals(
+      caloriesKcal:
+          _extractLabeledNumber(summary, const ['総カロリー', 'カロリー', '熱量']) ??
+          _extractUnitNumber(summary, 'kcal') ??
+          0,
+      proteinG:
+          _extractLabeledNumber(summary, const [
+            'タンパク質',
+            'たんぱく質',
+            'protein',
+            'P',
+          ]) ??
+          0,
+      fatG: _extractLabeledNumber(summary, const ['脂質', 'fat', 'F']) ?? 0,
+      carbohydrateG:
+          _extractLabeledNumber(summary, const [
+            '炭水化物',
+            '糖質',
+            'carbohydrate',
+            'C',
+          ]) ??
+          0,
+      saltG: _extractLabeledNumber(summary, const ['塩分', '食塩相当量', 'salt']) ?? 0,
+      caffeineMg:
+          _extractLabeledNumber(summary, const ['カフェイン', 'caffeine']) ?? 0,
+      alcoholG: _extractLabeledNumber(summary, const ['アルコール', 'alcohol']) ?? 0,
+    );
+
+    final fallbackQuestion = questions.isEmpty
+        ? ['Gemmaの回答が文章形式でした。食材や量に補足があれば入力してください。']
+        : questions;
+    final foodName = _extractFoodName(summary);
+
+    return MealEntry(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      imagePath: imagePath,
+      eatenAt: eatenAt,
+      foodName: foodName,
+      summary: summary.isEmpty ? 'Gemmaの分析結果を暫定記録しました。' : summary,
+      nutrition: nutrition,
+      confidence: 0.35,
+      questions: fallbackQuestion,
+      messages: [
+        MealMessage(
+          role: 'assistant',
+          text: fallbackQuestion.join('\n'),
+          createdAt: DateTime.now(),
+        ),
+      ],
+      rawGemmaResponse: response,
+    );
+  }
+
+  static String _cleanResponse(String response) {
+    return response
+        .replaceAll(RegExp(r'```(?:json)?'), '')
+        .replaceAll('```', '')
+        .trim();
+  }
+
+  static String _extractFoodName(String text) {
+    final lines = text
+        .split(RegExp(r'\r?\n'))
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
+    if (lines.isEmpty) return '食事';
+
+    final first = lines.first
+        .replaceFirst(RegExp(r'^[#*\-\d.、\s]+'), '')
+        .replaceFirst(RegExp(r'^(料理名|食事名|内容)[:：]\s*'), '')
+        .trim();
+    if (first.isEmpty) return '食事';
+    return first.length > 32 ? '${first.substring(0, 32)}...' : first;
+  }
+
+  static List<String> _extractQuestions(String text) {
+    return text
+        .split(RegExp(r'\r?\n'))
+        .map((line) => line.trim())
+        .where((line) => line.endsWith('？') || line.endsWith('?'))
+        .toList();
+  }
+
+  static double? _extractLabeledNumber(String text, List<String> labels) {
+    for (final label in labels) {
+      final escaped = RegExp.escape(label);
+      final match = RegExp(
+        '$escaped[^0-9０-９.,．，-]{0,24}([0-9０-９]+(?:[.,．，][0-9０-９]+)?)',
+        caseSensitive: false,
+      ).firstMatch(text);
+      final value = match == null ? null : _parseLooseNumber(match.group(1));
+      if (value != null) return value;
+    }
+    return null;
+  }
+
+  static double? _extractUnitNumber(String text, String unit) {
+    final match = RegExp(
+      '([0-9０-９]+(?:[.,．，][0-9０-９]+)?)\\s*$unit',
+      caseSensitive: false,
+    ).firstMatch(text);
+    return match == null ? null : _parseLooseNumber(match.group(1));
+  }
+
+  static double? _parseLooseNumber(String? text) {
+    if (text == null) return null;
+    final normalized = text
+        .trim()
+        .replaceAll('，', '.')
+        .replaceAll(',', '.')
+        .replaceAll('．', '.')
+        .replaceAll('０', '0')
+        .replaceAll('１', '1')
+        .replaceAll('２', '2')
+        .replaceAll('３', '3')
+        .replaceAll('４', '4')
+        .replaceAll('５', '5')
+        .replaceAll('６', '6')
+        .replaceAll('７', '7')
+        .replaceAll('８', '8')
+        .replaceAll('９', '9');
+    return double.tryParse(normalized);
   }
 
   static String? _extractJsonObject(String text) {

@@ -9,8 +9,6 @@ import '../services/gemma_service.dart';
 import '../services/meal_repository.dart';
 import '../services/photo_taken_at_reader.dart';
 
-enum HomeTab { today, history, profile }
-
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -25,17 +23,18 @@ class _HomeScreenState extends State<HomeScreen> {
   final _photoTakenAtReader = PhotoTakenAtReader();
   final _chatController = TextEditingController();
 
+  bool _isPreparingModel = true;
   bool _isModelLoading = false;
   bool _isLogLoading = true;
   bool _isAnalyzing = false;
   bool _isRefining = false;
   bool _hasTriedAutoModelLoad = false;
+  bool _hasPromptedForProfile = false;
   String? _modelDirectory;
   List<String> _availableModels = [];
   File? _selectedImage;
   DateTime? _selectedImageTime;
   MealLog _log = const MealLog();
-  HomeTab _tab = HomeTab.today;
   String? _selectedMealId;
   String? _error;
 
@@ -54,11 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _log = log;
         _isLogLoading = false;
       });
-      if (!log.profile.isComplete) {
-        WidgetsBinding.instance.addPostFrameCallback(
-          (_) => _showProfileDialog(),
-        );
-      }
+      _maybeShowProfileDialog();
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -75,6 +70,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadModelInfo() async {
+    if (mounted) {
+      setState(() {
+        _isPreparingModel = true;
+        _error = null;
+      });
+    }
     try {
       final dir = await _gemmaService.getModelDirectory();
       final models = await _gemmaService.listModels();
@@ -91,23 +92,39 @@ class _HomeScreenState extends State<HomeScreen> {
           models.isNotEmpty) {
         _hasTriedAutoModelLoad = true;
         await _initializeModel(models.first);
+        return;
       }
+
+      if (mounted) setState(() => _isPreparingModel = false);
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) {
+        setState(() {
+          _isPreparingModel = false;
+          _error = e.toString();
+        });
+      }
     }
   }
 
   Future<void> _initializeModel(String modelPath) async {
     setState(() {
+      _isPreparingModel = true;
       _isModelLoading = true;
       _error = null;
     });
     try {
       await _gemmaService.initialize(modelPath);
-      if (mounted) setState(() => _isModelLoading = false);
+      if (mounted) {
+        setState(() {
+          _isPreparingModel = false;
+          _isModelLoading = false;
+        });
+        _maybeShowProfileDialog();
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
+          _isPreparingModel = false;
           _isModelLoading = false;
           _error = e.toString();
         });
@@ -157,7 +174,6 @@ class _HomeScreenState extends State<HomeScreen> {
           _selectedMealId = meal.id;
           _selectedImage = null;
           _selectedImageTime = null;
-          _tab = HomeTab.today;
         });
       }
     } catch (e) {
@@ -258,6 +274,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
   int _sortMeals(MealEntry a, MealEntry b) => b.eatenAt.compareTo(a.eatenAt);
 
+  void _maybeShowProfileDialog() {
+    if (_hasPromptedForProfile ||
+        _isLogLoading ||
+        !_gemmaService.isInitialized ||
+        _log.profile.isComplete) {
+      return;
+    }
+
+    _hasPromptedForProfile = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _showProfileDialog();
+    });
+  }
+
   MealEntry? get _selectedMeal {
     for (final meal in _log.meals) {
       if (meal.id == _selectedMealId) return meal;
@@ -274,14 +304,22 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final todayMeals = _log.mealsForDay(DateTime.now());
     final selectedMeal = _selectedMeal;
+
+    if (!_gemmaService.isInitialized) {
+      return _buildModelPreparationScreen();
+    }
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Gemma Bite'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.person),
+            tooltip: '身体情報',
+            onPressed: _showProfileDialog,
+          ),
           if (_gemmaService.isInitialized)
             IconButton(
               icon: const Icon(Icons.refresh),
@@ -305,34 +343,21 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _buildModelStatus(),
+                  _buildImageSection(),
                   const SizedBox(height: 12),
-                  _buildTabSelector(),
+                  _buildActionButtons(),
+                  if (_isAnalyzing) ...[
+                    const SizedBox(height: 12),
+                    _buildLoadingIndicator(),
+                  ],
                   const SizedBox(height: 16),
-                  if (_tab == HomeTab.today) ...[
-                    _buildDailySummary(todayMeals),
+                  _buildDailySummary(_log.mealsForDay(DateTime.now())),
+                  const SizedBox(height: 12),
+                  _buildMealTimeline(_log.meals, title: '食事の記録'),
+                  if (selectedMeal != null) ...[
                     const SizedBox(height: 12),
-                    _buildImageSection(),
-                    const SizedBox(height: 12),
-                    _buildActionButtons(),
-                    if (_isAnalyzing) ...[
-                      const SizedBox(height: 12),
-                      _buildLoadingIndicator(),
-                    ],
-                    const SizedBox(height: 12),
-                    _buildMealTimeline(todayMeals, title: '今日の食事'),
-                    if (selectedMeal != null) ...[
-                      const SizedBox(height: 12),
-                      _buildMealDetail(selectedMeal),
-                    ],
-                  ] else if (_tab == HomeTab.history) ...[
-                    _buildMealTimeline(_log.meals, title: 'すべての食事'),
-                    if (selectedMeal != null) ...[
-                      const SizedBox(height: 12),
-                      _buildMealDetail(selectedMeal),
-                    ],
-                  ] else
-                    _buildProfileCard(),
+                    _buildMealDetail(selectedMeal),
+                  ],
                   if (_error != null) ...[
                     const SizedBox(height: 12),
                     _buildError(),
@@ -343,99 +368,98 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildTabSelector() {
-    return SegmentedButton<HomeTab>(
-      segments: const [
-        ButtonSegment(
-          value: HomeTab.today,
-          icon: Icon(Icons.today),
-          label: Text('今日'),
-        ),
-        ButtonSegment(
-          value: HomeTab.history,
-          icon: Icon(Icons.timeline),
-          label: Text('履歴'),
-        ),
-        ButtonSegment(
-          value: HomeTab.profile,
-          icon: Icon(Icons.person),
-          label: Text('身体'),
-        ),
-      ],
-      selected: {_tab},
-      onSelectionChanged: (selection) => setState(() => _tab = selection.first),
-    );
-  }
+  Widget _buildModelPreparationScreen() {
+    final isSearching = _isPreparingModel && !_isModelLoading;
+    final isWaiting = isSearching || _isModelLoading;
 
-  Widget _buildModelStatus() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  _gemmaService.isInitialized
-                      ? Icons.check_circle
-                      : _isModelLoading
-                      ? Icons.hourglass_top
-                      : Icons.circle_outlined,
-                  color: _gemmaService.isInitialized
-                      ? Colors.green
-                      : _isModelLoading
-                      ? Colors.orange
-                      : Colors.grey,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  _gemmaService.isInitialized
-                      ? 'モデル準備完了'
-                      : _isModelLoading
-                      ? 'モデル読み込み中...'
-                      : 'モデル未読み込み',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ],
-            ),
-            if (_isModelLoading) ...[
-              const SizedBox(height: 12),
-              const LinearProgressIndicator(),
-              const SizedBox(height: 8),
-              const Text('初回読み込みには時間がかかります。'),
-            ],
-            if (!_gemmaService.isInitialized && !_isModelLoading) ...[
-              const SizedBox(height: 12),
-              if (_availableModels.isEmpty) ...[
-                const Text('モデルファイル (.litertlm) を配置してください:'),
-                const SizedBox(height: 6),
-                SelectableText(
-                  _modelDirectory ?? '読み込み中...',
-                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: _loadModelInfo,
-                  icon: const Icon(Icons.refresh, size: 18),
-                  label: const Text('モデルを再検索'),
-                ),
-              ] else
-                ..._availableModels.map((model) {
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () => _initializeModel(model),
-                        icon: const Icon(Icons.play_arrow),
-                        label: Text(model.split('/').last),
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Icon(
+                    Icons.restaurant,
+                    size: 56,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Gemma Bite',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 28),
+                  if (isWaiting) ...[
+                    const Center(child: CircularProgressIndicator()),
+                    const SizedBox(height: 20),
+                    Text(
+                      isSearching ? 'モデルを確認しています' : 'モデルを読み込んでいます',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '初回読み込みには時間がかかります。',
+                      textAlign: TextAlign.center,
+                    ),
+                  ] else if (_availableModels.isEmpty) ...[
+                    Text(
+                      'モデルファイルが見つかりません',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'モデルファイル (.litertlm) を配置してください:',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    SelectableText(
+                      _modelDirectory ?? '読み込み中...',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'monospace',
                       ),
                     ),
-                  );
-                }),
-            ],
-          ],
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: _loadModelInfo,
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('モデルを再検索'),
+                    ),
+                  ] else ...[
+                    Text(
+                      '読み込むモデルを選択してください',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 12),
+                    ..._availableModels.map((model) {
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: ElevatedButton.icon(
+                          onPressed: () => _initializeModel(model),
+                          icon: const Icon(Icons.play_arrow),
+                          label: Text(model.split('/').last),
+                        ),
+                      );
+                    }),
+                  ],
+                  if (_error != null) ...[
+                    const SizedBox(height: 16),
+                    _buildError(),
+                  ],
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -736,48 +760,6 @@ class _HomeScreenState extends State<HomeScreen> {
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(message.text),
-      ),
-    );
-  }
-
-  Widget _buildProfileCard() {
-    final profile = _log.profile;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('身体情報', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.height),
-              title: const Text('身長'),
-              trailing: Text(
-                profile.heightCm > 0
-                    ? '${profile.heightCm.toStringAsFixed(1)} cm'
-                    : '未入力',
-              ),
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.monitor_weight),
-              title: const Text('体重'),
-              trailing: Text(
-                profile.weightKg > 0
-                    ? '${profile.weightKg.toStringAsFixed(1)} kg'
-                    : '未入力',
-              ),
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: _showProfileDialog,
-              icon: const Icon(Icons.edit),
-              label: const Text('編集'),
-            ),
-          ],
-        ),
       ),
     );
   }
