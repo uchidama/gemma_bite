@@ -9,8 +9,17 @@ import '../services/gemma_service.dart';
 import '../services/meal_repository.dart';
 import '../services/photo_taken_at_reader.dart';
 
+enum _MainTab { home, eatLog, settings }
+
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    super.key,
+    required this.themeMode,
+    required this.onThemeModeChanged,
+  });
+
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -75,6 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
   MealLog _log = const MealLog();
   String? _selectedMealId;
   String? _error;
+  _MainTab _tab = _MainTab.home;
 
   @override
   void initState() {
@@ -263,7 +273,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Gemma Bite'),
+        title: Text(switch (_tab) {
+          _MainTab.home => 'Gemma Bite',
+          _MainTab.eatLog => 'イートログ',
+          _MainTab.settings => '設定',
+        }),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
@@ -287,36 +301,80 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
         ],
       ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tab.index,
+        onDestinationSelected: (index) {
+          setState(() => _tab = _MainTab.values[index]);
+        },
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.home), label: 'ホーム'),
+          NavigationDestination(icon: Icon(Icons.insights), label: 'イートログ'),
+          NavigationDestination(icon: Icon(Icons.settings), label: '設定'),
+        ],
+      ),
       body: _isLogLoading
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildImageSection(),
-                  const SizedBox(height: 12),
-                  _buildActionButtons(),
-                  if (_isAnalyzing) ...[
-                    const SizedBox(height: 12),
-                    _buildLoadingIndicator(),
-                  ],
-                  const SizedBox(height: 16),
-                  _buildMealTimeline(
-                    dailyOverview.meals,
-                    title: dailyOverview.mealTitle,
-                  ),
-                  const SizedBox(height: 12),
-                  _buildDailySummary(dailyOverview),
-                  const SizedBox(height: 12),
-                  _buildWeeklySummary(weeklyOverview),
-                  if (_error != null) ...[
-                    const SizedBox(height: 12),
-                    _buildError(),
-                  ],
-                ],
-              ),
+          : switch (_tab) {
+              _MainTab.home => _buildHomeTab(dailyOverview, weeklyOverview),
+              _MainTab.eatLog => _EatLogContent(overview: weeklyOverview),
+              _MainTab.settings => _buildSettingsTab(),
+            },
+    );
+  }
+
+  Widget _buildHomeTab(
+    _DailyOverview dailyOverview,
+    _WeeklyOverview weeklyOverview,
+  ) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildImageSection(),
+          const SizedBox(height: 12),
+          _buildActionButtons(),
+          if (_isAnalyzing) ...[
+            const SizedBox(height: 12),
+            _buildLoadingIndicator(),
+          ],
+          const SizedBox(height: 16),
+          _buildMealTimeline(
+            dailyOverview.meals,
+            title: dailyOverview.mealTitle,
+          ),
+          const SizedBox(height: 12),
+          _buildDailySummary(dailyOverview),
+          const SizedBox(height: 12),
+          _buildWeeklySummary(weeklyOverview),
+          if (_error != null) ...[const SizedBox(height: 12), _buildError()],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingsTab() {
+    final isDark = widget.themeMode == ThemeMode.dark;
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: SwitchListTile(
+              secondary: const Icon(Icons.dark_mode),
+              title: const Text('ダークモード'),
+              subtitle: const Text('黒ベースのUIテーマに切り替えます'),
+              value: isDark,
+              onChanged: (enabled) {
+                widget.onThemeModeChanged(
+                  enabled ? ThemeMode.dark : ThemeMode.light,
+                );
+              },
             ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -677,6 +735,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildImageSection() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Card(
       clipBehavior: Clip.antiAlias,
       child: _selectedImage != null
@@ -697,14 +756,21 @@ class _HomeScreenState extends State<HomeScreen> {
             )
           : Container(
               height: 180,
-              color: Colors.grey[100],
-              child: const Center(
+              color: colorScheme.surfaceContainerHighest,
+              child: Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.restaurant, size: 44, color: Colors.grey),
-                    SizedBox(height: 8),
-                    Text('食事の写真を撮影・選択してください'),
+                    Icon(
+                      Icons.restaurant,
+                      size: 44,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '食事の写真を撮影・選択してください',
+                      style: TextStyle(color: colorScheme.onSurfaceVariant),
+                    ),
                   ],
                 ),
               ),
@@ -927,6 +993,28 @@ class _EatLogScreen extends StatefulWidget {
 }
 
 class _EatLogScreenState extends State<_EatLogScreen> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('イートログ'),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      ),
+      body: _EatLogContent(overview: widget.overview),
+    );
+  }
+}
+
+class _EatLogContent extends StatefulWidget {
+  const _EatLogContent({required this.overview});
+
+  final _WeeklyOverview overview;
+
+  @override
+  State<_EatLogContent> createState() => _EatLogContentState();
+}
+
+class _EatLogContentState extends State<_EatLogContent> {
   _EatLogMetric _metric = _EatLogMetric.calories;
 
   @override
@@ -940,114 +1028,106 @@ class _EatLogScreenState extends State<_EatLogScreen> {
     );
     final average = total / widget.overview.days.length;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('イートログ'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '過去7日間',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 12),
-            _metricSelector(),
-            const SizedBox(height: 12),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      _formatRange(chronologicalDays),
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '過去7日間',
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 12),
+          _metricSelector(),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    _formatRange(chronologicalDays),
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '${_metric.label}の推移',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 220,
+                    child: CustomPaint(
+                      painter: _WeeklyNutritionChartPainter(
+                        days: chronologicalDays,
+                        metric: _metric,
+                        gridColor: Theme.of(context).colorScheme.outlineVariant,
+                        barColor: _metric.color[700]!,
+                        labelColor: Theme.of(
+                          context,
+                        ).colorScheme.onSurfaceVariant,
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      '${_metric.label}の推移',
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _metricTotal(
+                          label: '合計',
+                          value: _formatMetricValue(total),
+                          icon: Icons.functions,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _metricTotal(
+                          label: '一日の平均',
+                          value: _formatMetricValue(average),
+                          icon: Icons.timeline,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      '写真投稿数',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: 220,
-                      child: CustomPaint(
-                        painter: _WeeklyNutritionChartPainter(
-                          days: chronologicalDays,
-                          metric: _metric,
-                          gridColor: Theme.of(
-                            context,
-                          ).colorScheme.outlineVariant,
-                          barColor: _metric.color[700]!,
-                          labelColor: Theme.of(
-                            context,
-                          ).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _metricTotal(
-                            label: '合計',
-                            value: _formatMetricValue(total),
-                            icon: Icons.functions,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _metricTotal(
-                            label: '一日の平均',
-                            value: _formatMetricValue(average),
-                            icon: Icons.timeline,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 8),
+                  _eatLogValueRow(
+                    label: '過去7日間',
+                    valueText: '${widget.overview.photoCount}枚',
+                    icon: Icons.photo_library,
+                    color: Colors.blue[600]!,
+                    showDivider: false,
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 12),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        '写真投稿数',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    _eatLogValueRow(
-                      label: '過去7日間',
-                      valueText: '${widget.overview.photoCount}枚',
-                      icon: Icons.photo_library,
-                      color: Colors.blue[600]!,
-                      showDivider: false,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            _buildEatLogTimeline(context, meals),
-          ],
-        ),
+          ),
+          const SizedBox(height: 12),
+          _buildEatLogTimeline(context, meals),
+        ],
       ),
     );
   }
