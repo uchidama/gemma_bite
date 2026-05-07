@@ -34,11 +34,13 @@ class _WeeklyDaySummary {
   const _WeeklyDaySummary({
     required this.day,
     required this.meals,
+    required this.totals,
     required this.caloriesKcal,
   });
 
   final DateTime day;
   final List<MealEntry> meals;
+  final NutritionTotals totals;
   final double caloriesKcal;
 }
 
@@ -444,7 +446,16 @@ class _HomeScreenState extends State<HomeScreen> {
         0,
         (total, meal) => total + meal.nutrition.caloriesKcal,
       );
-      return _WeeklyDaySummary(day: day, meals: meals, caloriesKcal: calories);
+      final totals = meals.fold(
+        const NutritionTotals.empty(),
+        (total, meal) => total + meal.nutrition,
+      );
+      return _WeeklyDaySummary(
+        day: day,
+        meals: meals,
+        totals: totals,
+        caloriesKcal: calories,
+      );
     });
     final totalCalories = days.fold<double>(
       0,
@@ -541,49 +552,63 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildWeeklySummary(_WeeklyOverview overview) {
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                '過去7日間',
-                style: Theme.of(context).textTheme.titleMedium,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _openEatLog(overview),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '過去7日間',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            _summaryValueRow(
-              label: '摂取カロリーの1日平均',
-              valueText: '${overview.averageCaloriesKcal.round()}kcal',
-              icon: Icons.timeline,
-              color: Colors.orange[700]!,
-            ),
-            _summaryValueRow(
-              label: '写真投稿数',
-              valueText: '${overview.photoCount}枚',
-              icon: Icons.photo_library,
-              color: Colors.blue[600]!,
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-              child: Text(
-                '各日の摂取カロリー',
-                style: Theme.of(context).textTheme.titleSmall,
+              const SizedBox(height: 8),
+              _summaryValueRow(
+                label: '摂取カロリーの1日平均',
+                valueText: '${overview.averageCaloriesKcal.round()}kcal',
+                icon: Icons.timeline,
+                color: Colors.orange[700]!,
               ),
-            ),
-            ...overview.days.map((day) {
-              final isLast = day == overview.days.last;
-              return _summaryValueRow(
-                label: _formatDayLabel(day.day),
-                valueText: '${day.caloriesKcal.round()}kcal',
-                icon: Icons.calendar_today,
-                color: Theme.of(context).colorScheme.primary,
-                showDivider: !isLast,
-              );
-            }),
-          ],
+              _summaryValueRow(
+                label: '写真投稿数',
+                valueText: '${overview.photoCount}枚',
+                icon: Icons.photo_library,
+                color: Colors.blue[600]!,
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                child: Text(
+                  '各日の摂取カロリー',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
+              ...overview.days.map((day) {
+                final isLast = day == overview.days.last;
+                return _summaryValueRow(
+                  label: _formatDayLabel(day.day),
+                  valueText: '${day.caloriesKcal.round()}kcal',
+                  icon: Icons.calendar_today,
+                  color: Theme.of(context).colorScheme.primary,
+                  showDivider: !isLast,
+                );
+              }),
+            ],
+          ),
         ),
       ),
     );
@@ -805,6 +830,14 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _openEatLog(_WeeklyOverview overview) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => _EatLogScreen(overview: overview),
+      ),
+    );
+  }
+
   Future<void> _showProfileDialog() async {
     if (!mounted) return;
     final profile = await showDialog<UserProfile>(
@@ -858,6 +891,431 @@ class _HomeScreenState extends State<HomeScreen> {
     const weekdays = ['月', '火', '水', '木', '金', '土', '日'];
     final weekday = weekdays[dateTime.weekday - 1];
     return '${dateTime.month}/${dateTime.day} ($weekday)';
+  }
+}
+
+enum _EatLogMetric {
+  calories('カロリー', 'kcal', Colors.amber, Icons.bolt),
+  protein('タンパク質', 'g', Colors.green, Icons.fitness_center),
+  fat('脂質', 'g', Colors.teal, Icons.water_drop),
+  carbohydrate('炭水化物', 'g', Colors.lightGreen, Icons.rice_bowl);
+
+  const _EatLogMetric(this.label, this.unit, this.color, this.icon);
+
+  final String label;
+  final String unit;
+  final MaterialColor color;
+  final IconData icon;
+
+  double valueFor(_WeeklyDaySummary day) {
+    return switch (this) {
+      _EatLogMetric.calories => day.caloriesKcal,
+      _EatLogMetric.protein => day.totals.proteinG,
+      _EatLogMetric.fat => day.totals.fatG,
+      _EatLogMetric.carbohydrate => day.totals.carbohydrateG,
+    };
+  }
+}
+
+class _EatLogScreen extends StatefulWidget {
+  const _EatLogScreen({required this.overview});
+
+  final _WeeklyOverview overview;
+
+  @override
+  State<_EatLogScreen> createState() => _EatLogScreenState();
+}
+
+class _EatLogScreenState extends State<_EatLogScreen> {
+  _EatLogMetric _metric = _EatLogMetric.calories;
+
+  @override
+  Widget build(BuildContext context) {
+    final chronologicalDays = widget.overview.days.reversed.toList();
+    final meals = widget.overview.days.expand((day) => day.meals).toList()
+      ..sort((a, b) => b.eatenAt.compareTo(a.eatenAt));
+    final total = widget.overview.days.fold<double>(
+      0,
+      (total, day) => total + _metric.valueFor(day),
+    );
+    final average = total / widget.overview.days.length;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('イートログ'),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '過去7日間',
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 12),
+            _metricSelector(),
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      _formatRange(chronologicalDays),
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      '${_metric.label}の推移',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 220,
+                      child: CustomPaint(
+                        painter: _WeeklyNutritionChartPainter(
+                          days: chronologicalDays,
+                          metric: _metric,
+                          gridColor: Theme.of(
+                            context,
+                          ).colorScheme.outlineVariant,
+                          barColor: _metric.color[700]!,
+                          labelColor: Theme.of(
+                            context,
+                          ).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _metricTotal(
+                            label: '合計',
+                            value: _formatMetricValue(total),
+                            icon: Icons.functions,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _metricTotal(
+                            label: '一日の平均',
+                            value: _formatMetricValue(average),
+                            icon: Icons.timeline,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        '写真投稿数',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _eatLogValueRow(
+                      label: '過去7日間',
+                      valueText: '${widget.overview.photoCount}枚',
+                      icon: Icons.photo_library,
+                      color: Colors.blue[600]!,
+                      showDivider: false,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildEatLogTimeline(context, meals),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _eatLogValueRow({
+    required String label,
+    required String valueText,
+    required IconData icon,
+    required Color color,
+    bool showDivider = true,
+  }) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Icon(icon, size: 24, color: color),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  label,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              Text(
+                valueText,
+                textAlign: TextAlign.right,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
+        if (showDivider)
+          Divider(
+            height: 1,
+            indent: 56,
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+      ],
+    );
+  }
+
+  Widget _metricSelector() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: _EatLogMetric.values.map((metric) {
+          final selected = metric == _metric;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              selected: selected,
+              avatar: Icon(
+                metric.icon,
+                size: 18,
+                color: selected ? metric.color[900] : metric.color[700],
+              ),
+              label: Text(metric.label),
+              onSelected: (_) => setState(() => _metric = metric),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _metricTotal({
+    required String label,
+    required String value,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: _metric.color[700]),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: Theme.of(context).textTheme.bodySmall),
+                Text(
+                  value,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEatLogTimeline(BuildContext context, List<MealEntry> meals) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('イートログ', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            if (meals.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(child: Text('この期間の食事記録はありません')),
+              )
+            else
+              ...meals.map((meal) {
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: _mealThumbnail(meal),
+                  title: Text(meal.foodName),
+                  subtitle: Text(
+                    '${_formatDateTime(meal.eatenAt)}  ${meal.nutrition.caloriesKcal.round()}kcal',
+                  ),
+                  trailing: meal.needsClarification
+                      ? const Icon(Icons.help_outline, color: Colors.orange)
+                      : const Icon(
+                          Icons.check_circle_outline,
+                          color: Colors.green,
+                        ),
+                );
+              }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _mealThumbnail(MealEntry meal) {
+    final file = File(meal.imagePath);
+    if (!file.existsSync()) {
+      return const CircleAvatar(child: Icon(Icons.restaurant));
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: Image.file(file, width: 48, height: 48, fit: BoxFit.cover),
+    );
+  }
+
+  String _formatMetricValue(double value) {
+    final formatted = _metric == _EatLogMetric.calories
+        ? value.round().toString()
+        : value.toStringAsFixed(1);
+    return '$formatted${_metric.unit}';
+  }
+
+  static String _formatRange(List<_WeeklyDaySummary> days) {
+    if (days.isEmpty) return '';
+    final start = days.first.day;
+    final end = days.last.day;
+    return '${start.month}月${start.day}日〜${end.day}日';
+  }
+
+  static String _formatDateTime(DateTime dateTime) {
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${dateTime.year}/${two(dateTime.month)}/${two(dateTime.day)} ${two(dateTime.hour)}:${two(dateTime.minute)}';
+  }
+}
+
+class _WeeklyNutritionChartPainter extends CustomPainter {
+  const _WeeklyNutritionChartPainter({
+    required this.days,
+    required this.metric,
+    required this.gridColor,
+    required this.barColor,
+    required this.labelColor,
+  });
+
+  final List<_WeeklyDaySummary> days;
+  final _EatLogMetric metric;
+  final Color gridColor;
+  final Color barColor;
+  final Color labelColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (days.isEmpty) return;
+
+    const left = 34.0;
+    const right = 10.0;
+    const top = 8.0;
+    const bottom = 42.0;
+    final chartWidth = size.width - left - right;
+    final chartHeight = size.height - top - bottom;
+    final values = days.map(metric.valueFor).toList();
+    final maxValue = values.fold<double>(
+      0,
+      (max, value) => value > max ? value : max,
+    );
+    final scaleMax = maxValue <= 0 ? 1.0 : maxValue * 1.25;
+    final gridPaint = Paint()
+      ..color = gridColor
+      ..strokeWidth = 1;
+    final barPaint = Paint()
+      ..color = barColor
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 12;
+    final labelPainter = TextPainter(textDirection: TextDirection.ltr);
+
+    for (var i = 0; i <= 4; i++) {
+      final y = top + chartHeight * i / 4;
+      canvas.drawLine(
+        Offset(left, y),
+        Offset(size.width - right, y),
+        gridPaint,
+      );
+      final value = scaleMax * (4 - i) / 4;
+      labelPainter.text = TextSpan(
+        text: _formatAxisValue(value),
+        style: TextStyle(color: labelColor, fontSize: 11),
+      );
+      labelPainter.layout();
+      labelPainter.paint(canvas, Offset(0, y - labelPainter.height / 2));
+    }
+
+    final step = days.length == 1 ? chartWidth : chartWidth / (days.length - 1);
+    for (var i = 0; i < days.length; i++) {
+      final day = days[i];
+      final value = values[i];
+      final x = left + step * i;
+      final barHeight = chartHeight * (value / scaleMax);
+      final baseY = top + chartHeight;
+      if (value > 0) {
+        canvas.drawLine(
+          Offset(x, baseY),
+          Offset(x, baseY - barHeight),
+          barPaint,
+        );
+      }
+
+      final showLabel = i == 0 || i == days.length - 1;
+      labelPainter.text = TextSpan(
+        text: showLabel ? '${day.day.month}/${day.day.day}' : '•',
+        style: TextStyle(color: labelColor, fontSize: showLabel ? 12 : 15),
+      );
+      labelPainter.layout();
+      labelPainter.paint(
+        canvas,
+        Offset(x - labelPainter.width / 2, baseY + 14),
+      );
+    }
+  }
+
+  String _formatAxisValue(double value) {
+    return metric == _EatLogMetric.calories
+        ? value.round().toString()
+        : value.toStringAsFixed(1);
+  }
+
+  @override
+  bool shouldRepaint(_WeeklyNutritionChartPainter oldDelegate) {
+    return days != oldDelegate.days ||
+        metric != oldDelegate.metric ||
+        gridColor != oldDelegate.gridColor ||
+        barColor != oldDelegate.barColor ||
+        labelColor != oldDelegate.labelColor;
   }
 }
 
