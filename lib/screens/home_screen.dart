@@ -807,67 +807,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _showProfileDialog() async {
     if (!mounted) return;
-    final heightController = TextEditingController(
-      text: _log.profile.heightCm > 0
-          ? _log.profile.heightCm.toStringAsFixed(1)
-          : '',
+    final profile = await showDialog<UserProfile>(
+      context: context,
+      builder: (context) => _ProfileDialog(initialProfile: _log.profile),
     );
-    final weightController = TextEditingController(
-      text: _log.profile.weightKg > 0
-          ? _log.profile.weightKg.toStringAsFixed(1)
-          : '',
-    );
-
-    UserProfile? profile;
-    try {
-      profile = await showDialog<UserProfile>(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: const Text('身体情報を入力'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: heightController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(labelText: '身長 cm'),
-                ),
-                TextField(
-                  controller: weightController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(labelText: '体重 kg'),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('あとで'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  Navigator.of(context).pop(
-                    UserProfile(
-                      heightCm: _parseProfileNumber(heightController.text),
-                      weightKg: _parseProfileNumber(weightController.text),
-                    ),
-                  );
-                },
-                child: const Text('保存'),
-              ),
-            ],
-          );
-        },
-      );
-    } finally {
-      heightController.dispose();
-      weightController.dispose();
-    }
     if (!mounted || profile == null) return;
 
     try {
@@ -875,25 +818,6 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       if (mounted) setState(() => _error = '身体情報を保存できませんでした: $e');
     }
-  }
-
-  double _parseProfileNumber(String text) {
-    final normalized = text
-        .trim()
-        .replaceAll('，', '.')
-        .replaceAll(',', '.')
-        .replaceAll('．', '.')
-        .replaceAll('０', '0')
-        .replaceAll('１', '1')
-        .replaceAll('２', '2')
-        .replaceAll('３', '3')
-        .replaceAll('４', '4')
-        .replaceAll('５', '5')
-        .replaceAll('６', '6')
-        .replaceAll('７', '7')
-        .replaceAll('８', '8')
-        .replaceAll('９', '9');
-    return double.tryParse(normalized) ?? 0;
   }
 
   Widget _buildError() {
@@ -934,6 +858,179 @@ class _HomeScreenState extends State<HomeScreen> {
     const weekdays = ['月', '火', '水', '木', '金', '土', '日'];
     final weekday = weekdays[dateTime.weekday - 1];
     return '${dateTime.month}/${dateTime.day} ($weekday)';
+  }
+}
+
+class _ProfileDialog extends StatefulWidget {
+  const _ProfileDialog({required this.initialProfile});
+
+  final UserProfile initialProfile;
+
+  @override
+  State<_ProfileDialog> createState() => _ProfileDialogState();
+}
+
+class _ProfileDialogState extends State<_ProfileDialog> {
+  late final TextEditingController _heightController;
+  late final TextEditingController _weightController;
+  late final TextEditingController _birthDateController;
+  late final TextEditingController _notesController;
+
+  late String _gender;
+  DateTime? _birthDate;
+
+  @override
+  void initState() {
+    super.initState();
+    final profile = widget.initialProfile;
+    _birthDate = profile.birthDate;
+    _gender = profile.gender;
+    _heightController = TextEditingController(
+      text: profile.heightCm > 0 ? profile.heightCm.toStringAsFixed(1) : '',
+    );
+    _weightController = TextEditingController(
+      text: profile.weightKg > 0 ? profile.weightKg.toStringAsFixed(1) : '',
+    );
+    _birthDateController = TextEditingController(text: _formatDate(_birthDate));
+    _notesController = TextEditingController(text: profile.notes);
+  }
+
+  @override
+  void dispose() {
+    _heightController.dispose();
+    _weightController.dispose();
+    _birthDateController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickBirthDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _birthDate ?? DateTime(now.year - 30),
+      firstDate: DateTime(1900),
+      lastDate: now,
+    );
+    if (picked == null || !mounted) return;
+
+    setState(() {
+      _birthDate = picked;
+      _birthDateController.text = _formatDate(picked);
+    });
+  }
+
+  void _save() {
+    Navigator.of(context).pop(
+      UserProfile(
+        heightCm: _parseProfileNumber(_heightController.text),
+        weightKg: _parseProfileNumber(_weightController.text),
+        birthDate: _birthDate,
+        gender: _gender,
+        notes: _notesController.text.trim(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('身体情報を入力'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _heightController,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(labelText: '身長 cm'),
+            ),
+            TextField(
+              controller: _weightController,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(labelText: '体重 kg'),
+            ),
+            TextField(
+              controller: _birthDateController,
+              readOnly: true,
+              decoration: InputDecoration(
+                labelText: '生年月日',
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.calendar_today),
+                  tooltip: '生年月日を選択',
+                  onPressed: _pickBirthDate,
+                ),
+              ),
+              onTap: _pickBirthDate,
+            ),
+            DropdownButtonFormField<String>(
+              initialValue: _gender,
+              decoration: const InputDecoration(labelText: '性別'),
+              items: const [
+                DropdownMenuItem(
+                  value: UserProfile.genderMale,
+                  child: Text('男'),
+                ),
+                DropdownMenuItem(
+                  value: UserProfile.genderFemale,
+                  child: Text('女'),
+                ),
+                DropdownMenuItem(
+                  value: UserProfile.genderNoAnswer,
+                  child: Text('無回答'),
+                ),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() => _gender = value);
+              },
+            ),
+            TextField(
+              controller: _notesController,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(labelText: '特記事項'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('あとで'),
+        ),
+        FilledButton(onPressed: _save, child: const Text('保存')),
+      ],
+    );
+  }
+
+  static String _formatDate(DateTime? dateTime) {
+    if (dateTime == null) return '';
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${dateTime.year}/${two(dateTime.month)}/${two(dateTime.day)}';
+  }
+
+  static double _parseProfileNumber(String text) {
+    final normalized = text
+        .trim()
+        .replaceAll('，', '.')
+        .replaceAll(',', '.')
+        .replaceAll('．', '.')
+        .replaceAll('０', '0')
+        .replaceAll('１', '1')
+        .replaceAll('２', '2')
+        .replaceAll('３', '3')
+        .replaceAll('４', '4')
+        .replaceAll('５', '5')
+        .replaceAll('６', '6')
+        .replaceAll('７', '7')
+        .replaceAll('８', '8')
+        .replaceAll('９', '9');
+    return double.tryParse(normalized) ?? 0;
   }
 }
 

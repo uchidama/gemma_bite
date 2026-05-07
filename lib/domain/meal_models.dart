@@ -398,15 +398,34 @@ class MealEntry {
 }
 
 class UserProfile {
-  const UserProfile({required this.heightCm, required this.weightKg});
+  const UserProfile({
+    required this.heightCm,
+    required this.weightKg,
+    this.birthDate,
+    this.gender = genderNoAnswer,
+    this.notes = '',
+  });
+
+  static const genderMale = 'male';
+  static const genderFemale = 'female';
+  static const genderNoAnswer = 'noAnswer';
 
   final double heightCm;
   final double weightKg;
+  final DateTime? birthDate;
+  final String gender;
+  final String notes;
 
-  bool get isComplete => heightCm > 0 && weightKg > 0;
+  bool get isComplete => heightCm > 0 && weightKg > 0 && birthDate != null;
 
   Map<String, dynamic> toJson() {
-    return {'heightCm': heightCm, 'weightKg': weightKg};
+    return {
+      'heightCm': heightCm,
+      'weightKg': weightKg,
+      'birthDate': birthDate?.toIso8601String(),
+      'gender': gender,
+      'notes': notes,
+    };
   }
 
   factory UserProfile.fromJson(Map<String, dynamic>? json) {
@@ -420,9 +439,17 @@ class UserProfile {
       return 0;
     }
 
+    final gender = json['gender'] as String? ?? genderNoAnswer;
+
     return UserProfile(
       heightCm: number('heightCm'),
       weightKg: number('weightKg'),
+      birthDate: DateTime.tryParse(json['birthDate'] as String? ?? ''),
+      gender: switch (gender) {
+        genderMale || genderFemale || genderNoAnswer => gender,
+        _ => genderNoAnswer,
+      },
+      notes: json['notes'] as String? ?? '',
     );
   }
 }
