@@ -1715,6 +1715,8 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _buildMealPhoto(meal),
+            const SizedBox(height: 12),
             Text(meal.foodName, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 4),
             Text(_formatDateTime(meal.eatenAt)),
@@ -1794,6 +1796,30 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildMealPhoto(MealEntry meal) {
+    final file = File(meal.imagePath);
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: file.existsSync()
+            ? Image.file(file, fit: BoxFit.cover)
+            : Container(
+                color: colorScheme.surfaceContainerHighest,
+                child: Center(
+                  child: Icon(
+                    Icons.restaurant,
+                    size: 48,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
       ),
     );
   }
