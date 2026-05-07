@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'screens/home_screen.dart';
+import 'services/app_settings_repository.dart';
 
 void main() {
   runApp(const GemmaBiteApp());
@@ -14,10 +15,24 @@ class GemmaBiteApp extends StatefulWidget {
 }
 
 class _GemmaBiteAppState extends State<GemmaBiteApp> {
+  final _settingsRepository = AppSettingsRepository();
   ThemeMode _themeMode = ThemeMode.light;
 
-  void _setThemeMode(ThemeMode themeMode) {
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final themeMode = await _settingsRepository.loadThemeMode();
+    if (!mounted) return;
     setState(() => _themeMode = themeMode);
+  }
+
+  Future<void> _setThemeMode(ThemeMode themeMode) async {
+    setState(() => _themeMode = themeMode);
+    await _settingsRepository.saveThemeMode(themeMode);
   }
 
   @override

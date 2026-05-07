@@ -19,7 +19,7 @@ class HomeScreen extends StatefulWidget {
   });
 
   final ThemeMode themeMode;
-  final ValueChanged<ThemeMode> onThemeModeChanged;
+  final Future<void> Function(ThemeMode themeMode) onThemeModeChanged;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -316,7 +316,11 @@ class _HomeScreenState extends State<HomeScreen> {
           ? const Center(child: CircularProgressIndicator())
           : switch (_tab) {
               _MainTab.home => _buildHomeTab(dailyOverview, weeklyOverview),
-              _MainTab.eatLog => _EatLogContent(overview: weeklyOverview),
+              _MainTab.eatLog => _EatLogContent(
+                overview: weeklyOverview,
+                gemmaService: _gemmaService,
+                onMealUpdated: _replaceMeal,
+              ),
               _MainTab.settings => _buildSettingsTab(),
             },
     );
@@ -896,12 +900,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _openEatLog(_WeeklyOverview overview) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => _EatLogScreen(overview: overview),
-      ),
-    );
+  void _openEatLog(_WeeklyOverview overview) {
+    setState(() => _tab = _MainTab.eatLog);
   }
 
   Future<void> _showProfileDialog() async {
@@ -983,32 +983,16 @@ enum _EatLogMetric {
   }
 }
 
-class _EatLogScreen extends StatefulWidget {
-  const _EatLogScreen({required this.overview});
-
-  final _WeeklyOverview overview;
-
-  @override
-  State<_EatLogScreen> createState() => _EatLogScreenState();
-}
-
-class _EatLogScreenState extends State<_EatLogScreen> {
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('イートログ'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-      ),
-      body: _EatLogContent(overview: widget.overview),
-    );
-  }
-}
-
 class _EatLogContent extends StatefulWidget {
-  const _EatLogContent({required this.overview});
+  const _EatLogContent({
+    required this.overview,
+    this.gemmaService,
+    this.onMealUpdated,
+  });
 
   final _WeeklyOverview overview;
+  final GemmaService? gemmaService;
+  final Future<void> Function(MealEntry meal)? onMealUpdated;
 
   @override
   State<_EatLogContent> createState() => _EatLogContentState();
@@ -1260,9 +1244,28 @@ class _EatLogContentState extends State<_EatLogContent> {
                           Icons.check_circle_outline,
                           color: Colors.green,
                         ),
+                  onTap: widget.gemmaService == null
+                      ? null
+                      : () => _openMealDetail(meal),
                 );
               }),
           ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openMealDetail(MealEntry meal) async {
+    final gemmaService = widget.gemmaService;
+    final onMealUpdated = widget.onMealUpdated;
+    if (gemmaService == null || onMealUpdated == null) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => MealDetailScreen(
+          meal: meal,
+          gemmaService: gemmaService,
+          onMealUpdated: onMealUpdated,
         ),
       ),
     );
@@ -1808,6 +1811,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
 
   Widget _buildMessageBubble(MealMessage message) {
     final isUser = message.role == 'user';
+    final colorScheme = Theme.of(context).colorScheme;
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -1816,11 +1820,18 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
         constraints: const BoxConstraints(maxWidth: 320),
         decoration: BoxDecoration(
           color: isUser
-              ? Theme.of(context).colorScheme.primaryContainer
-              : Colors.grey[100],
+              ? colorScheme.primaryContainer
+              : colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Text(message.text),
+        child: Text(
+          message.text,
+          style: TextStyle(
+            color: isUser
+                ? colorScheme.onPrimaryContainer
+                : colorScheme.onSurfaceVariant,
+          ),
+        ),
       ),
     );
   }
