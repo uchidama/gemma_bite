@@ -36,6 +36,7 @@ android {
 
 dependencies {
     implementation("com.google.ai.edge.litertlm:litertlm-android:latest.release")
+    implementation("com.google.mlkit:text-recognition-japanese:16.0.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 }
 

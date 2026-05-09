@@ -28,13 +28,24 @@ class GemmaService {
     return result ?? '';
   }
 
+  Future<String> extractTextFromImage(String imagePath) async {
+    final result = await _channel.invokeMethod<String>('extractTextFromImage', {
+      'imagePath': imagePath,
+    });
+    return result ?? '';
+  }
+
   Future<String> refineMeal({
     required String currentMealJson,
     required String userAnswer,
+    String? referenceImagePath,
+    String? ocrText,
   }) async {
     final result = await _channel.invokeMethod<String>('refineMeal', {
       'currentMealJson': currentMealJson,
       'userAnswer': userAnswer,
+      'referenceImagePath': referenceImagePath,
+      'ocrText': ocrText,
     });
     return result ?? '';
   }

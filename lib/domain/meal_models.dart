@@ -77,17 +77,20 @@ class MealMessage {
     required this.role,
     required this.text,
     required this.createdAt,
+    this.imagePath,
   });
 
   final String role;
   final String text;
   final DateTime createdAt;
+  final String? imagePath;
 
   Map<String, dynamic> toJson() {
     return {
       'role': role,
       'text': text,
       'createdAt': createdAt.toIso8601String(),
+      'imagePath': imagePath,
     };
   }
 
@@ -98,6 +101,9 @@ class MealMessage {
       createdAt:
           DateTime.tryParse(json['createdAt'] as String? ?? '') ??
           DateTime.now(),
+      imagePath: (json['imagePath'] as String?)?.trim().isEmpty == true
+          ? null
+          : json['imagePath'] as String?,
     );
   }
 }

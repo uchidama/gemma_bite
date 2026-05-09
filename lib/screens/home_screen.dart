@@ -182,7 +182,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
-      final picked = await _imagePicker.pickImage(source: source);
+      final picked = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 1280,
+        maxHeight: 1280,
+        imageQuality: 85,
+      );
       if (picked == null || !mounted) return;
 
       final imageFile = File(picked.path);
@@ -1593,9 +1598,11 @@ class MealDetailScreen extends StatefulWidget {
 
 class _MealDetailScreenState extends State<MealDetailScreen> {
   final _chatController = TextEditingController();
+  final _chatImagePicker = ImagePicker();
 
   late MealEntry _meal;
   bool _isRefining = false;
+  File? _referenceImage;
 
   @override
   void initState() {
@@ -1609,15 +1616,41 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
     super.dispose();
   }
 
+  Future<void> _pickReferenceImage(ImageSource source) async {
+    try {
+      final picked = await _chatImagePicker.pickImage(
+        source: source,
+        maxWidth: 1280,
+        maxHeight: 1280,
+        imageQuality: 85,
+      );
+      if (picked == null || !mounted) return;
+      setState(() => _referenceImage = File(picked.path));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('画像を選択できませんでした。もう一度お試しください。')),
+      );
+    }
+  }
+
   Future<void> _sendClarification() async {
     final answer = _chatController.text.trim();
-    if (answer.isEmpty) return;
+    final referenceImage = _referenceImage;
+    if (answer.isEmpty && referenceImage == null) return;
     _chatController.clear();
+    if (mounted) setState(() => _referenceImage = null);
+
+    final userText = [
+      if (answer.isNotEmpty) answer,
+      if (referenceImage != null) '（成分表画像を添付）',
+    ].join('\n');
 
     final userMessage = MealMessage(
       role: 'user',
-      text: answer,
+      text: userText,
       createdAt: DateTime.now(),
+      imagePath: referenceImage?.path,
     );
     final pendingMeal = _meal.copyWith(
       messages: [..._meal.messages, userMessage],
@@ -1642,9 +1675,35 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
 
     setState(() => _isRefining = true);
     try {
+      String? ocrText;
+      if (referenceImage != null) {
+        final extracted = await widget.gemmaService.extractTextFromImage(
+          referenceImage.path,
+        );
+        if (extracted.trim().isNotEmpty) {
+          ocrText = extracted.trim();
+          await _replaceMeal(
+            pendingMeal.copyWith(
+              messages: [
+                ...pendingMeal.messages,
+                MealMessage(
+                  role: 'assistant',
+                  text:
+                      'OCR読み取り結果:\n${_previewOcrText(ocrText)}\n\nこのテキストを優先して再計算します。',
+                  createdAt: DateTime.now(),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+
+      final latestMeal = _meal;
       final response = await widget.gemmaService.refineMeal(
-        currentMealJson: jsonEncode(pendingMeal.toJson()),
+        currentMealJson: jsonEncode(latestMeal.toJson()),
         userAnswer: answer,
+        referenceImagePath: referenceImage?.path,
+        ocrText: ocrText,
       );
       final refined = MealEntry.fromGemmaJson(
         imagePath: _meal.imagePath,
@@ -1664,8 +1723,12 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
             MealMessage(
               role: 'assistant',
               text: refined.questions.isEmpty
-                  ? '回答を反映して栄養値を更新しました。'
-                  : refined.questions.join('\n'),
+                  ? (refined.summary.isEmpty
+                        ? '回答を反映して栄養値を更新しました。'
+                        : '読み取り結果: ${refined.summary}\n\n回答を反映して栄養値を更新しました。')
+                  : (refined.summary.isEmpty
+                        ? refined.questions.join('\n')
+                        : '読み取り結果: ${refined.summary}\n\n確認事項:\n${refined.questions.join('\n')}'),
               createdAt: DateTime.now(),
             ),
           ],
@@ -1687,6 +1750,13 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
     } finally {
       if (mounted) setState(() => _isRefining = false);
     }
+  }
+
+  String _previewOcrText(String text) {
+    const maxLength = 260;
+    return text.length <= maxLength
+        ? text
+        : '${text.substring(0, maxLength)}...';
   }
 
   Future<void> _replaceMeal(MealEntry meal) async {
@@ -1773,6 +1843,44 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
             ...meal.messages.map(_buildMessageBubble),
             if (_isRefining) const LinearProgressIndicator(),
             const SizedBox(height: 8),
+            if (_referenceImage != null) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: Image.file(_referenceImage!, fit: BoxFit.cover),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+            Wrap(
+              spacing: 8,
+              children: [
+                ActionChip(
+                  avatar: const Icon(Icons.photo_library, size: 18),
+                  label: const Text('成分表画像を選択'),
+                  onPressed: _isRefining
+                      ? null
+                      : () => _pickReferenceImage(ImageSource.gallery),
+                ),
+                ActionChip(
+                  avatar: const Icon(Icons.photo_camera, size: 18),
+                  label: const Text('撮影して添付'),
+                  onPressed: _isRefining
+                      ? null
+                      : () => _pickReferenceImage(ImageSource.camera),
+                ),
+                if (_referenceImage != null)
+                  ActionChip(
+                    avatar: const Icon(Icons.close, size: 18),
+                    label: const Text('添付を外す'),
+                    onPressed: _isRefining
+                        ? null
+                        : () => setState(() => _referenceImage = null),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
@@ -1781,7 +1889,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                     minLines: 1,
                     maxLines: 3,
                     decoration: const InputDecoration(
-                      hintText: '例: ご飯は小盛り、味噌汁あり',
+                      hintText: '例: ご飯は小盛り、味噌汁あり（画像添付のみでも可）',
                       border: OutlineInputBorder(),
                     ),
                   ),
@@ -1838,6 +1946,12 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
   Widget _buildMessageBubble(MealMessage message) {
     final isUser = message.role == 'user';
     final colorScheme = Theme.of(context).colorScheme;
+    final imagePath = message.imagePath;
+    final imageFile = (imagePath == null || imagePath.isEmpty)
+        ? null
+        : File(imagePath);
+    final hasImage = imageFile?.existsSync() ?? false;
+
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -1850,13 +1964,29 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
               : colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Text(
-          message.text,
-          style: TextStyle(
-            color: isUser
-                ? colorScheme.onPrimaryContainer
-                : colorScheme.onSurfaceVariant,
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (hasImage) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: SizedBox(
+                  width: 200,
+                  height: 120,
+                  child: Image.file(imageFile!, fit: BoxFit.cover),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+            Text(
+              message.text,
+              style: TextStyle(
+                color: isUser
+                    ? colorScheme.onPrimaryContainer
+                    : colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
         ),
       ),
     );
