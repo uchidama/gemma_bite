@@ -79,6 +79,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _hasPromptedForProfile = false;
   String? _modelDirectory;
   List<String> _availableModels = [];
+  String? _activeModelPath;
+  int? _lastAnalyzeLatencyMs;
   File? _selectedImage;
   DateTime? _selectedImageTime;
   MealLog _log = const MealLog();
@@ -166,6 +168,7 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _isPreparingModel = false;
           _isModelLoading = false;
+          _activeModelPath = modelPath;
         });
         _maybeShowProfileDialog();
       }
@@ -179,6 +182,8 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
   }
+
+  String _displayModelName(String path) => path.split('/').last;
 
   Future<void> _pickImage(ImageSource source) async {
     try {
@@ -213,7 +218,9 @@ class _HomeScreenState extends State<HomeScreen> {
       _error = null;
     });
     try {
+      final stopwatch = Stopwatch()..start();
       final response = await _gemmaService.analyzeFood(_selectedImage!.path);
+      stopwatch.stop();
       final meal = MealEntry.fromGemmaJson(
         imagePath: _selectedImage!.path,
         eatenAt: _selectedImageTime ?? DateTime.now(),
@@ -227,6 +234,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _selectedMealId = meal.id;
           _selectedImage = null;
           _selectedImageTime = null;
+          _lastAnalyzeLatencyMs = stopwatch.elapsedMilliseconds;
         });
       }
     } catch (e) {
@@ -300,6 +308,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   _selectedImage = null;
                   _selectedImageTime = null;
                   _hasTriedAutoModelLoad = false;
+                  _activeModelPath = null;
                 });
                 _loadModelInfo();
               },
@@ -343,6 +352,10 @@ class _HomeScreenState extends State<HomeScreen> {
           _buildImageSection(),
           const SizedBox(height: 12),
           _buildActionButtons(),
+          if (_activeModelPath != null || _lastAnalyzeLatencyMs != null) ...[
+            const SizedBox(height: 12),
+            _buildInferenceStatusCard(),
+          ],
           if (_isAnalyzing) ...[
             const SizedBox(height: 12),
             _buildLoadingIndicator(),
@@ -466,7 +479,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: ElevatedButton.icon(
                           onPressed: () => _initializeModel(model),
                           icon: const Icon(Icons.play_arrow),
-                          label: Text(model.split('/').last),
+                          label: Text(
+                            _displayModelName(model),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       );
                     }),
@@ -835,6 +851,38 @@ class _HomeScreenState extends State<HomeScreen> {
             CircularProgressIndicator(),
             SizedBox(height: 12),
             Text('Gemma が食事を分析中...'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInferenceStatusCard() {
+    final modelPath = _activeModelPath;
+    final modelName = modelPath == null ? '未選択' : _displayModelName(modelPath);
+    const modeLabel = '投機デコードON';
+    final latency = _lastAnalyzeLatencyMs;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            Chip(
+              avatar: const Icon(Icons.memory, size: 18),
+              label: Text('モデル: $modelName'),
+            ),
+            Chip(
+              avatar: const Icon(Icons.speed, size: 18),
+              label: Text('デコード: $modeLabel'),
+            ),
+            if (latency != null)
+              Chip(
+                avatar: const Icon(Icons.timer, size: 18),
+                label: Text('直近分析: ${(latency / 1000).toStringAsFixed(2)}秒'),
+              ),
           ],
         ),
       ),

@@ -67,6 +67,7 @@ class MainActivity : FlutterActivity() {
         addOnCanceledListener { if (cont.isActive) cont.cancel() }
     }
 
+    @OptIn(ExperimentalApi::class)
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
@@ -99,6 +100,9 @@ class MainActivity : FlutterActivity() {
                                 // Close existing engine if any
                                 conversation?.close()
                                 engine?.close()
+
+                                // Gemma 4 MTP (speculative decoding) を有効化
+                                ExperimentalFlags.enableSpeculativeDecoding = true
 
                                 val config = EngineConfig(
                                     modelPath = modelPath,

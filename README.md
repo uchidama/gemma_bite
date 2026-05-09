@@ -56,6 +56,16 @@ huggingface-cli download litert-community/gemma-4-E2B-it-litert-lm --local-dir .
 ```
 
 
+
+### Gemma 4 MTP（ドラフターモデル）について
+
+- 2026-05時点の LiteRT-LM Android ドキュメントでは、MTP は `ExperimentalFlags.enableSpeculativeDecoding = true` で有効化します。
+- Gemma 4 の LiteRT モデル（例: `gemma-4-E2B-it.litertlm`）をそのまま利用し、推論側の投機的デコードをONにする運用です。
+- 本アプリの Android 実装では、モデル初期化時に投機的デコードを有効化しています。
+- MTPの有無や配布状況は公式ドキュメントを参照してください: https://ai.google.dev/gemma/docs/mtp/overview
+
+
+
 ### アプリの使い方
 
 1. **モデル配置**: Gemma-4-E2B の `.litertlm` ファイルを以下にadbで転送
@@ -66,6 +76,11 @@ adb shell mkdir -p /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/
 
 # モデルファイルを転送（ダウンロードしたファイルのパスに合わせて調整）
 adb push ~/FlutterProjects/gemma_bite/models/gemma-4-E2B-it-litert-lm/gemma-4-E2B-it.litertlm /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models/
+
+adb push ./models/gemma-4-E2B-it-litert-lm/gemma-4-E2B-it.litertlm /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models/
+
+# 旧キャッシュを削除（再最適化させる）
+adb shell rm -f /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models/*.xnnpack_cache_*
 ```
 
 2. **モデル読み込み**: アプリ内でモデルファイルを選択して初期化
