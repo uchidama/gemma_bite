@@ -174,7 +174,7 @@ class MealEntry {
   }
 
   factory MealEntry.fromJson(Map<String, dynamic> json) {
-    return MealEntry(
+    final entry = MealEntry(
       id:
           json['id'] as String? ??
           DateTime.now().microsecondsSinceEpoch.toString(),
@@ -197,6 +197,7 @@ class MealEntry {
           .toList(),
       rawGemmaResponse: json['rawGemmaResponse'] as String? ?? '',
     );
+    return entry._repairParsedGemmaResponse();
   }
 
   static MealEntry fromGemmaJson({
@@ -251,6 +252,36 @@ class MealEntry {
     );
   }
 
+  MealEntry _repairParsedGemmaResponse() {
+    if (rawGemmaResponse.trim().isEmpty) return this;
+    if (!_looksLikeFallbackParse) return this;
+
+    try {
+      final repaired = MealEntry.fromGemmaJson(
+        imagePath: imagePath,
+        eatenAt: eatenAt,
+        response: rawGemmaResponse,
+      );
+      return copyWith(
+        foodName: repaired.foodName,
+        summary: repaired.summary,
+        nutrition: repaired.nutrition,
+        confidence: repaired.confidence,
+        questions: repaired.questions,
+        messages: repaired.messages,
+      );
+    } on FormatException {
+      return this;
+    }
+  }
+
+  bool get _looksLikeFallbackParse {
+    return foodName == '[' ||
+        (foodName == '食事' &&
+            summary.trim().startsWith(RegExp(r'[\[{]')) &&
+            nutrition.caloriesKcal == 0);
+  }
+
   static Map<String, dynamic> _decodeGemmaResponse(String response) {
     final trimmed = response.trim();
     final fenced = RegExp(
@@ -259,8 +290,20 @@ class MealEntry {
     ).firstMatch(trimmed);
     final jsonText = fenced?.group(1) ?? _extractJsonObject(trimmed) ?? trimmed;
     final decoded = jsonDecode(jsonText);
-    if (decoded is Map<String, dynamic>) return decoded;
+    final normalized = _normalizeGemmaJson(decoded);
+    if (normalized != null) return normalized;
     throw const FormatException('Gemma response is not a JSON object');
+  }
+
+  static Map<String, dynamic>? _normalizeGemmaJson(Object? decoded) {
+    if (decoded is Map<String, dynamic>) return decoded;
+    if (decoded is List) {
+      for (final item in decoded) {
+        final normalized = _normalizeGemmaJson(item);
+        if (normalized != null) return normalized;
+      }
+    }
+    return null;
   }
 
   static MealEntry _fromGemmaText({

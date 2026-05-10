@@ -114,7 +114,7 @@ class MainActivity : FlutterActivity() {
 
                                 val convCfg = ConversationConfig(
                                     systemInstruction = Contents.of(
-                                        "あなたは食事写真から栄養記録を作る専門家です。回答は必ずJSONのみで、説明文やMarkdownを含めません。\n" +
+                                        "あなたは食事写真から栄養記録を作る専門家です。回答は必ず単一のJSONオブジェクトのみで、配列、説明文、Markdownを含めません。\n" +
                                         "スキーマ: {\"foodName\": string, \"summary\": string, \"nutrition\": {\"caloriesKcal\": number, \"proteinG\": number, \"fatG\": number, \"carbohydrateG\": number, \"saltG\": number, \"caffeineMg\": number, \"alcoholG\": number}, \"confidence\": number, \"questions\": string[]}\n" +
                                         "nutritionは見える量から1食分として推定します。PFC、総カロリー、塩分を最優先し、カフェインとアルコールは該当しない場合0にします。\n" +
                                         "正確に判断できない食材、量、飲み物、調味料がある場合はquestionsに日本語の短い確認質問を最大3件入れます。質問が不要なら空配列にします。confidenceは0から1です。"
@@ -155,7 +155,7 @@ class MainActivity : FlutterActivity() {
                                         Contents.of(
                                             Content.ImageFile(imagePath),
                                             Content.Text(
-                                                "この食事写真を分析し、指定スキーマのJSONだけを返してください。見えない部分は推定し、不明点はquestionsに入れてください。"
+                                                "この食事写真を分析し、指定スキーマの単一JSONオブジェクトだけを返してください。配列では返さないでください。見えない部分は推定し、不明点はquestionsに入れてください。"
                                             ),
                                         )
                                     )
