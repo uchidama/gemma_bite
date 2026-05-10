@@ -232,16 +232,18 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       if (mounted) {
         setState(() {
+          _isAnalyzing = false;
           _selectedMealId = meal.id;
           _selectedImage = null;
           _selectedImageTime = null;
           _lastAnalyzeLatencyMs = stopwatch.elapsedMilliseconds;
         });
+        await _openMealDetail(meal);
       }
     } catch (e) {
       if (mounted) setState(() => _error = '分析結果を記録できませんでした: $e');
     } finally {
-      if (mounted) setState(() => _isAnalyzing = false);
+      if (mounted && _isAnalyzing) setState(() => _isAnalyzing = false);
     }
   }
 
