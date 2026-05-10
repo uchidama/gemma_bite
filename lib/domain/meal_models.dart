@@ -407,6 +407,7 @@ class UserProfile {
   const UserProfile({
     required this.heightCm,
     required this.weightKg,
+    this.weightHistory = const [],
     this.birthDate,
     this.gender = genderNoAnswer,
     this.notes = '',
@@ -418,6 +419,7 @@ class UserProfile {
 
   final double heightCm;
   final double weightKg;
+  final List<WeightEntry> weightHistory;
   final DateTime? birthDate;
   final String gender;
   final String notes;
@@ -428,6 +430,7 @@ class UserProfile {
     return {
       'heightCm': heightCm,
       'weightKg': weightKg,
+      'weightHistory': weightHistory.map((entry) => entry.toJson()).toList(),
       'birthDate': birthDate?.toIso8601String(),
       'gender': gender,
       'notes': notes,
@@ -446,16 +449,51 @@ class UserProfile {
     }
 
     final gender = json['gender'] as String? ?? genderNoAnswer;
+    final weightHistory =
+        (json['weightHistory'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(WeightEntry.fromJson)
+            .where((entry) => entry.weightKg > 0)
+            .toList()
+          ..sort((a, b) => a.enteredAt.compareTo(b.enteredAt));
 
     return UserProfile(
       heightCm: number('heightCm'),
       weightKg: number('weightKg'),
+      weightHistory: weightHistory,
       birthDate: DateTime.tryParse(json['birthDate'] as String? ?? ''),
       gender: switch (gender) {
         genderMale || genderFemale || genderNoAnswer => gender,
         _ => genderNoAnswer,
       },
       notes: json['notes'] as String? ?? '',
+    );
+  }
+}
+
+class WeightEntry {
+  const WeightEntry({required this.enteredAt, required this.weightKg});
+
+  final DateTime enteredAt;
+  final double weightKg;
+
+  Map<String, dynamic> toJson() {
+    return {'enteredAt': enteredAt.toIso8601String(), 'weightKg': weightKg};
+  }
+
+  factory WeightEntry.fromJson(Map<String, dynamic> json) {
+    double number(String key) {
+      final value = json[key];
+      if (value is num) return value.toDouble();
+      if (value is String) return double.tryParse(value) ?? 0;
+      return 0;
+    }
+
+    return WeightEntry(
+      enteredAt:
+          DateTime.tryParse(json['enteredAt'] as String? ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+      weightKg: number('weightKg'),
     );
   }
 }

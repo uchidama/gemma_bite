@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../domain/meal_models.dart';
@@ -957,11 +958,23 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _tab = _MainTab.eatLog);
   }
 
+  Future<void> _openWeightHistory(List<WeightEntry> history) async {
+    if (history.length < 2) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => WeightHistoryScreen(entries: history),
+      ),
+    );
+  }
+
   Future<void> _showProfileDialog() async {
     if (!mounted) return;
     final profile = await showDialog<UserProfile>(
       context: context,
-      builder: (context) => _ProfileDialog(initialProfile: _log.profile),
+      builder: (context) => _ProfileDialog(
+        initialProfile: _log.profile,
+        onOpenWeightHistory: _openWeightHistory,
+      ),
     );
     if (!mounted || profile == null) return;
 
@@ -1456,9 +1469,13 @@ class _WeeklyNutritionChartPainter extends CustomPainter {
 }
 
 class _ProfileDialog extends StatefulWidget {
-  const _ProfileDialog({required this.initialProfile});
+  const _ProfileDialog({
+    required this.initialProfile,
+    required this.onOpenWeightHistory,
+  });
 
   final UserProfile initialProfile;
+  final Future<void> Function(List<WeightEntry> history) onOpenWeightHistory;
 
   @override
   State<_ProfileDialog> createState() => _ProfileDialogState();
@@ -1483,7 +1500,7 @@ class _ProfileDialogState extends State<_ProfileDialog> {
       text: profile.heightCm > 0 ? profile.heightCm.toStringAsFixed(1) : '',
     );
     _weightController = TextEditingController(
-      text: profile.weightKg > 0 ? profile.weightKg.toStringAsFixed(1) : '',
+      text: profile.weightKg > 0 ? profile.weightKg.toStringAsFixed(2) : '',
     );
     _birthDateController = TextEditingController(text: _formatDate(_birthDate));
     _notesController = TextEditingController(text: profile.notes);
@@ -1515,15 +1532,26 @@ class _ProfileDialogState extends State<_ProfileDialog> {
   }
 
   void _save() {
+    final weightKg = _parseProfileNumber(_weightController.text);
+    final weightHistory = _updatedWeightHistory(weightKg);
     Navigator.of(context).pop(
       UserProfile(
         heightCm: _parseProfileNumber(_heightController.text),
-        weightKg: _parseProfileNumber(_weightController.text),
+        weightKg: weightKg,
+        weightHistory: weightHistory,
         birthDate: _birthDate,
         gender: _gender,
         notes: _notesController.text.trim(),
       ),
     );
+  }
+
+  List<WeightEntry> _updatedWeightHistory(double weightKg) {
+    final history = List<WeightEntry>.of(widget.initialProfile.weightHistory);
+    if (weightKg <= 0) return history;
+    if (history.isNotEmpty && history.last.weightKg == weightKg) return history;
+    history.add(WeightEntry(enteredAt: DateTime.now(), weightKg: weightKg));
+    return history..sort((a, b) => a.enteredAt.compareTo(b.enteredAt));
   }
 
   @override
@@ -1541,12 +1569,30 @@ class _ProfileDialogState extends State<_ProfileDialog> {
               ),
               decoration: const InputDecoration(labelText: '身長 cm'),
             ),
-            TextField(
-              controller: _weightController,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(labelText: '体重 kg'),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _weightController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: const [_TwoDecimalInputFormatter()],
+                    decoration: const InputDecoration(labelText: '体重 kg'),
+                  ),
+                ),
+                if (widget.initialProfile.weightHistory.length >= 2) ...[
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: () => widget.onOpenWeightHistory(
+                      widget.initialProfile.weightHistory,
+                    ),
+                    icon: const Icon(Icons.show_chart),
+                    label: const Text('推移'),
+                  ),
+                ],
+              ],
             ),
             TextField(
               controller: _birthDateController,
@@ -1625,6 +1671,242 @@ class _ProfileDialogState extends State<_ProfileDialog> {
         .replaceAll('８', '8')
         .replaceAll('９', '9');
     return double.tryParse(normalized) ?? 0;
+  }
+}
+
+class WeightHistoryScreen extends StatelessWidget {
+  const WeightHistoryScreen({super.key, required this.entries});
+
+  final List<WeightEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    final sortedEntries = List<WeightEntry>.of(entries)
+      ..sort((a, b) => a.enteredAt.compareTo(b.enteredAt));
+    final latest = sortedEntries.last;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('体重の推移')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '${latest.weightKg.toStringAsFixed(2)} kg',
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '最新: ${_formatDateTime(latest.enteredAt)}',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    height: 260,
+                    child: CustomPaint(
+                      painter: _WeightHistoryChartPainter(
+                        entries: sortedEntries,
+                        gridColor: Theme.of(context).colorScheme.outlineVariant,
+                        lineColor: Theme.of(context).colorScheme.primary,
+                        pointColor: Theme.of(context).colorScheme.secondary,
+                        labelColor: Theme.of(
+                          context,
+                        ).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '入力履歴',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          ...sortedEntries.reversed.map(
+            (entry) => Card(
+              child: ListTile(
+                leading: const Icon(Icons.monitor_weight),
+                title: Text('${entry.weightKg.toStringAsFixed(2)} kg'),
+                subtitle: Text(_formatDateTime(entry.enteredAt)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _formatDateTime(DateTime dateTime) {
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${dateTime.year}/${two(dateTime.month)}/${two(dateTime.day)} ${two(dateTime.hour)}:${two(dateTime.minute)}';
+  }
+}
+
+class _TwoDecimalInputFormatter extends TextInputFormatter {
+  const _TwoDecimalInputFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final text = newValue.text;
+    if (text.isEmpty) return newValue;
+
+    final decimalSeparators = RegExp('[.,，．]').allMatches(text).length;
+    if (decimalSeparators > 1) return oldValue;
+
+    final normalized = text.replaceAll('，', '.').replaceAll('．', '.');
+    final parts = normalized.split('.');
+    if (parts.length > 1 && parts.last.length > 2) return oldValue;
+
+    final validText = RegExp(r'^[0-9０-９.,，．]*$').hasMatch(text);
+    return validText ? newValue : oldValue;
+  }
+}
+
+class _WeightHistoryChartPainter extends CustomPainter {
+  const _WeightHistoryChartPainter({
+    required this.entries,
+    required this.gridColor,
+    required this.lineColor,
+    required this.pointColor,
+    required this.labelColor,
+  });
+
+  final List<WeightEntry> entries;
+  final Color gridColor;
+  final Color lineColor;
+  final Color pointColor;
+  final Color labelColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (entries.length < 2) return;
+
+    const left = 42.0;
+    const right = 16.0;
+    const top = 14.0;
+    const bottom = 44.0;
+    final chartWidth = size.width - left - right;
+    final chartHeight = size.height - top - bottom;
+    final weights = entries.map((entry) => entry.weightKg).toList();
+    final minWeight = weights.reduce((a, b) => a < b ? a : b);
+    final maxWeight = weights.reduce((a, b) => a > b ? a : b);
+    final padding = (maxWeight - minWeight).abs() < 0.1
+        ? 1.0
+        : (maxWeight - minWeight) * 0.15;
+    final axisMin = minWeight - padding;
+    final axisMax = maxWeight + padding;
+    final axisRange = axisMax - axisMin;
+    final labelPainter = TextPainter(textDirection: TextDirection.ltr);
+    final gridPaint = Paint()
+      ..color = gridColor
+      ..strokeWidth = 1;
+    final linePaint = Paint()
+      ..color = lineColor
+      ..strokeWidth = 3
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final pointPaint = Paint()
+      ..color = pointColor
+      ..style = PaintingStyle.fill;
+
+    for (var i = 0; i <= 4; i++) {
+      final y = top + chartHeight * i / 4;
+      canvas.drawLine(
+        Offset(left, y),
+        Offset(size.width - right, y),
+        gridPaint,
+      );
+      final value = axisMax - axisRange * i / 4;
+      labelPainter.text = TextSpan(
+        text: value.toStringAsFixed(2),
+        style: TextStyle(color: labelColor, fontSize: 11),
+      );
+      labelPainter.layout(maxWidth: left - 4);
+      labelPainter.paint(
+        canvas,
+        Offset(left - labelPainter.width - 6, y - labelPainter.height / 2),
+      );
+    }
+
+    Offset pointFor(int index) {
+      final entry = entries[index];
+      final x = left + chartWidth * index / (entries.length - 1);
+      final y =
+          top + chartHeight * (1 - ((entry.weightKg - axisMin) / axisRange));
+      return Offset(x, y);
+    }
+
+    final path = Path()..moveTo(pointFor(0).dx, pointFor(0).dy);
+    for (var i = 1; i < entries.length; i++) {
+      final point = pointFor(i);
+      path.lineTo(point.dx, point.dy);
+    }
+    canvas.drawPath(path, linePaint);
+
+    for (var i = 0; i < entries.length; i++) {
+      canvas.drawCircle(pointFor(i), 4, pointPaint);
+    }
+
+    final first = entries.first.enteredAt;
+    final last = entries.last.enteredAt;
+    _paintDateLabel(
+      canvas,
+      labelPainter,
+      first,
+      Offset(left, top + chartHeight + 14),
+    );
+    _paintDateLabel(
+      canvas,
+      labelPainter,
+      last,
+      Offset(size.width - right, top + chartHeight + 14),
+      alignRight: true,
+    );
+  }
+
+  void _paintDateLabel(
+    Canvas canvas,
+    TextPainter labelPainter,
+    DateTime dateTime,
+    Offset offset, {
+    bool alignRight = false,
+  }) {
+    labelPainter.text = TextSpan(
+      text: '${dateTime.month}/${dateTime.day}',
+      style: TextStyle(color: labelColor, fontSize: 12),
+    );
+    labelPainter.layout();
+    labelPainter.paint(
+      canvas,
+      alignRight ? Offset(offset.dx - labelPainter.width, offset.dy) : offset,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_WeightHistoryChartPainter oldDelegate) {
+    return entries != oldDelegate.entries ||
+        gridColor != oldDelegate.gridColor ||
+        lineColor != oldDelegate.lineColor ||
+        pointColor != oldDelegate.pointColor ||
+        labelColor != oldDelegate.labelColor;
   }
 }
 
