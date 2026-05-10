@@ -10,7 +10,7 @@ import '../services/gemma_service.dart';
 import '../services/meal_repository.dart';
 import '../services/photo_taken_at_reader.dart';
 
-enum _MainTab { home, eatLog, settings }
+enum _MainTab { home, eatLog, consult, settings }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -66,16 +66,32 @@ class _WeeklyOverview {
   final int photoCount;
 }
 
+class _AiConsultMessage {
+  const _AiConsultMessage({
+    required this.role,
+    required this.text,
+    required this.createdAt,
+  });
+
+  final String role;
+  final String text;
+  final DateTime createdAt;
+}
+
 class _HomeScreenState extends State<HomeScreen> {
+  static const _nextMealSuggestionPrompt = '次の食事を提案して';
+
   final _gemmaService = GemmaService();
   final _imagePicker = ImagePicker();
   final _repository = MealRepository();
   final _photoTakenAtReader = PhotoTakenAtReader();
+  final _consultController = TextEditingController();
 
   bool _isPreparingModel = true;
   bool _isModelLoading = false;
   bool _isLogLoading = true;
   bool _isAnalyzing = false;
+  bool _isConsulting = false;
   bool _hasTriedAutoModelLoad = false;
   bool _hasPromptedForProfile = false;
   String? _modelDirectory;
@@ -85,6 +101,13 @@ class _HomeScreenState extends State<HomeScreen> {
   File? _selectedImage;
   DateTime? _selectedImageTime;
   MealLog _log = const MealLog();
+  List<_AiConsultMessage> _consultMessages = [
+    _AiConsultMessage(
+      role: 'assistant',
+      text: '食事ログをもとに、次の食事やPFCバランスを一緒に考えます。',
+      createdAt: DateTime.fromMillisecondsSinceEpoch(0),
+    ),
+  ];
   String? _selectedMealId;
   String? _error;
   _MainTab _tab = _MainTab.home;
@@ -274,6 +297,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _consultController.dispose();
     _gemmaService.dispose();
     super.dispose();
   }
@@ -292,6 +316,7 @@ class _HomeScreenState extends State<HomeScreen> {
         title: Text(switch (_tab) {
           _MainTab.home => 'Gemma Bite',
           _MainTab.eatLog => 'イートログ',
+          _MainTab.consult => 'AI相談',
           _MainTab.settings => '設定',
         }),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
@@ -326,6 +351,7 @@ class _HomeScreenState extends State<HomeScreen> {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home), label: 'ホーム'),
           NavigationDestination(icon: Icon(Icons.insights), label: 'イートログ'),
+          NavigationDestination(icon: Icon(Icons.chat_bubble), label: 'AI相談'),
           NavigationDestination(icon: Icon(Icons.settings), label: '設定'),
         ],
       ),
@@ -338,6 +364,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 gemmaService: _gemmaService,
                 onMealUpdated: _replaceMeal,
               ),
+              _MainTab.consult => _buildConsultTab(dailyOverview),
               _MainTab.settings => _buildSettingsTab(),
             },
     );
@@ -355,6 +382,14 @@ class _HomeScreenState extends State<HomeScreen> {
           _buildImageSection(),
           const SizedBox(height: 12),
           _buildActionButtons(),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _isConsulting
+                ? null
+                : () => _openConsultWithPrompt(_nextMealSuggestionPrompt),
+            icon: const Icon(Icons.restaurant_menu, size: 18),
+            label: const Text('次の食事を相談'),
+          ),
           if (_isAnalyzing) ...[
             const SizedBox(height: 12),
             _buildLoadingIndicator(),
@@ -372,6 +407,224 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildConsultTab(_DailyOverview dailyOverview) {
+    return Column(
+      children: [
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Text(
+                '食事ログから相談',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '今日の摂取量や直近の食事をもとに、次の食事を相談できます。',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ActionChip(
+                    avatar: const Icon(Icons.restaurant_menu, size: 18),
+                    label: const Text('次の食事を提案'),
+                    onPressed: _isConsulting
+                        ? null
+                        : () => _sendConsultMessage(_nextMealSuggestionPrompt),
+                  ),
+                  ActionChip(
+                    avatar: const Icon(Icons.balance, size: 18),
+                    label: const Text('今日の不足を確認'),
+                    onPressed: _isConsulting
+                        ? null
+                        : () => _sendConsultMessage(
+                            '今日の食事ログから不足していそうな栄養と、次に補うなら何がよいか教えて',
+                          ),
+                  ),
+                  ActionChip(
+                    avatar: const Icon(Icons.stacked_bar_chart, size: 18),
+                    label: const Text('PFCを整えたい'),
+                    onPressed: _isConsulting
+                        ? null
+                        : () => _sendConsultMessage('PFCバランスを整える次の食事を提案して'),
+                  ),
+                  ActionChip(
+                    avatar: const Icon(Icons.light_mode, size: 18),
+                    label: const Text('軽めにしたい'),
+                    onPressed: _isConsulting
+                        ? null
+                        : () => _sendConsultMessage(
+                            '次の食事は軽めにしたい。食事ログを見ておすすめを提案して',
+                          ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              ..._consultMessages.map(_buildConsultMessageBubble),
+              if (_isConsulting) ...[
+                const SizedBox(height: 8),
+                const LinearProgressIndicator(),
+              ],
+              if (dailyOverview.meals.isEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  '食事ログが増えるほど、提案は具体的になります。',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _consultController,
+                    minLines: 1,
+                    maxLines: 3,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: _isConsulting ? null : _sendConsultMessage,
+                    decoration: const InputDecoration(
+                      hintText: '例: コンビニで買える夕食を提案して',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filled(
+                  onPressed: _isConsulting
+                      ? null
+                      : () => _sendConsultMessage(_consultController.text),
+                  icon: const Icon(Icons.send),
+                  tooltip: '送信',
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildConsultMessageBubble(_AiConsultMessage message) {
+    final isUser = message.role == 'user';
+    final colorScheme = Theme.of(context).colorScheme;
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        constraints: const BoxConstraints(maxWidth: 340),
+        decoration: BoxDecoration(
+          color: isUser
+              ? colorScheme.primaryContainer
+              : colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          message.text,
+          style: TextStyle(
+            color: isUser
+                ? colorScheme.onPrimaryContainer
+                : colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openConsultWithPrompt(String prompt) async {
+    setState(() => _tab = _MainTab.consult);
+    await _sendConsultMessage(prompt);
+  }
+
+  Future<void> _sendConsultMessage(String text) async {
+    final prompt = text.trim();
+    if (prompt.isEmpty || _isConsulting) return;
+    _consultController.clear();
+    final userMessage = _AiConsultMessage(
+      role: 'user',
+      text: prompt,
+      createdAt: DateTime.now(),
+    );
+    setState(() {
+      _isConsulting = true;
+      _consultMessages = [..._consultMessages, userMessage];
+    });
+
+    try {
+      final response = await _gemmaService.consultMeal(
+        mealLogContext: _buildMealLogContext(),
+        userMessage: prompt,
+      );
+      if (!mounted) return;
+      setState(() {
+        _consultMessages = [
+          ..._consultMessages,
+          _AiConsultMessage(
+            role: 'assistant',
+            text: response.trim().isEmpty ? '提案を生成できませんでした。' : response.trim(),
+            createdAt: DateTime.now(),
+          ),
+        ];
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _consultMessages = [
+          ..._consultMessages,
+          _AiConsultMessage(
+            role: 'assistant',
+            text: '相談に失敗しました: $e',
+            createdAt: DateTime.now(),
+          ),
+        ];
+      });
+    } finally {
+      if (mounted) setState(() => _isConsulting = false);
+    }
+  }
+
+  String _buildMealLogContext() {
+    final now = DateTime.now();
+    final todayMeals = _log.mealsForDay(now);
+    final todayTotals = todayMeals.fold(
+      const NutritionTotals.empty(),
+      (total, meal) => total + meal.nutrition,
+    );
+    final recentMeals = _log.meals.take(12).map((meal) {
+      return {
+        'eatenAt': meal.eatenAt.toIso8601String(),
+        'foodName': meal.foodName,
+        'summary': meal.summary,
+        'nutrition': meal.nutrition.toJson(),
+      };
+    }).toList();
+    final profile = _log.profile;
+    return const JsonEncoder.withIndent('  ').convert({
+      'now': now.toIso8601String(),
+      'profile': profile.toJson(),
+      'today': {'mealCount': todayMeals.length, 'totals': todayTotals.toJson()},
+      'recentMeals': recentMeals,
+      'instruction':
+          '次の食事提案では、今日の摂取量、直近の食事、PFCバランスを考慮してください。一般的な食事提案として、メニュー案、理由、調整ポイントを簡潔に返してください。',
+    });
   }
 
   Widget _buildSettingsTab() {

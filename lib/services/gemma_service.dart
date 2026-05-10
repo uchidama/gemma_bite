@@ -50,6 +50,17 @@ class GemmaService {
     return result ?? '';
   }
 
+  Future<String> consultMeal({
+    required String mealLogContext,
+    required String userMessage,
+  }) async {
+    final result = await _channel.invokeMethod<String>('consultMeal', {
+      'mealLogContext': mealLogContext,
+      'userMessage': userMessage,
+    });
+    return result ?? '';
+  }
+
   Future<void> dispose() async {
     try {
       await _channel.invokeMethod('disposeModel');

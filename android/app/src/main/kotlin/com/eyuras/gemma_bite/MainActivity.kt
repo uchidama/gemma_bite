@@ -33,9 +33,12 @@ class MainActivity : FlutterActivity() {
      * 推論ごとに新しい Conversation を作って KV キャッシュ累積による OOM を防ぐ。
      * Engine は重い（モデルロード）ので使い回し、Conversation だけ毎回作り直す。
      */
-    private suspend fun <T> withFreshConversation(block: suspend (Conversation) -> T): T {
+    private suspend fun <T> withFreshConversation(
+        configOverride: ConversationConfig? = null,
+        block: suspend (Conversation) -> T
+    ): T {
         val eng = engine ?: error("モデルが初期化されていません")
-        val cfg = conversationConfig ?: error("モデルが初期化されていません")
+        val cfg = configOverride ?: conversationConfig ?: error("モデルが初期化されていません")
         return inferenceMutex.withLock {
             var conv: Conversation? = null
             try {
@@ -231,6 +234,50 @@ class MainActivity : FlutterActivity() {
                             } catch (e: Exception) {
                                 mainHandler.post {
                                     result.error("REFINE_ERROR", e.message, e.stackTraceToString())
+                                }
+                            }
+                        }
+                    }
+
+                    "consultMeal" -> {
+                        val mealLogContext = call.argument<String>("mealLogContext")
+                        val userMessage = call.argument<String>("userMessage")
+                        if (mealLogContext == null || userMessage == null) {
+                            result.error("INVALID_ARG", "mealLogContext and userMessage are required", null)
+                            return@setMethodCallHandler
+                        }
+                        if (engine == null) {
+                            result.error("NOT_INITIALIZED", "モデルが初期化されていません", null)
+                            return@setMethodCallHandler
+                        }
+
+                        scope.launch {
+                            try {
+                                val consultConfig = ConversationConfig(
+                                    systemInstruction = Contents.of(
+                                        "あなたは食事ログをもとに、次の食事や栄養バランスを日本語で提案する管理栄養士風のAI相談役です。\n" +
+                                        "医療診断はせず、一般的な食事提案として答えてください。具体的なメニュー案、理由、調整ポイントを短く実用的に示します。\n" +
+                                        "回答はJSONではなく、読みやすい日本語の文章で返してください。"
+                                    ),
+                                    samplerConfig = SamplerConfig(
+                                        topK = 40,
+                                        topP = 0.95,
+                                        temperature = 0.7,
+                                    ),
+                                )
+                                val response = withFreshConversation(consultConfig) { conv ->
+                                    conv.sendMessage(
+                                        Contents.of(
+                                            Content.Text(
+                                                "食事ログの要約:\n$mealLogContext\n\nユーザーの相談:\n$userMessage"
+                                            ),
+                                        )
+                                    )
+                                }
+                                mainHandler.post { result.success(response.toString()) }
+                            } catch (e: Exception) {
+                                mainHandler.post {
+                                    result.error("CONSULT_ERROR", e.message, e.stackTraceToString())
                                 }
                             }
                         }
