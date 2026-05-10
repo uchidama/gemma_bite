@@ -1030,7 +1030,8 @@ enum _EatLogMetric {
   calories('カロリー', 'kcal', Colors.amber, Icons.bolt),
   protein('タンパク質', 'g', Colors.green, Icons.fitness_center),
   fat('脂質', 'g', Colors.teal, Icons.water_drop),
-  carbohydrate('炭水化物', 'g', Colors.lightGreen, Icons.rice_bowl);
+  carbohydrate('炭水化物', 'g', Colors.lightGreen, Icons.rice_bowl),
+  pfcBalance('PFCバランス', '%', Colors.deepOrange, Icons.stacked_bar_chart);
 
   const _EatLogMetric(this.label, this.unit, this.color, this.icon);
 
@@ -1045,6 +1046,7 @@ enum _EatLogMetric {
       _EatLogMetric.protein => day.totals.proteinG,
       _EatLogMetric.fat => day.totals.fatG,
       _EatLogMetric.carbohydrate => day.totals.carbohydrateG,
+      _EatLogMetric.pfcBalance => 0,
     };
   }
 }
@@ -1072,10 +1074,12 @@ class _EatLogContentState extends State<_EatLogContent> {
     final chronologicalDays = widget.overview.days.reversed.toList();
     final meals = widget.overview.days.expand((day) => day.meals).toList()
       ..sort((a, b) => b.eatenAt.compareTo(a.eatenAt));
-    final total = widget.overview.days.fold<double>(
-      0,
-      (total, day) => total + _metric.valueFor(day),
-    );
+    final total = _metric == _EatLogMetric.pfcBalance
+        ? 0.0
+        : widget.overview.days.fold<double>(
+            0,
+            (total, day) => total + _metric.valueFor(day),
+          );
     final average = total / widget.overview.days.length;
 
     return SingleChildScrollView(
@@ -1107,44 +1111,57 @@ class _EatLogContentState extends State<_EatLogContent> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    '${_metric.label}の推移',
+                    _metric == _EatLogMetric.pfcBalance
+                        ? 'PFCバランスの推移'
+                        : '${_metric.label}の推移',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
+                  if (_metric == _EatLogMetric.pfcBalance) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'P/F/Cの摂取エネルギー比',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _pfcLegend(context),
+                  ],
                   const SizedBox(height: 12),
                   SizedBox(
                     height: 220,
                     child: CustomPaint(
-                      painter: _WeeklyNutritionChartPainter(
-                        days: chronologicalDays,
-                        metric: _metric,
-                        gridColor: Theme.of(context).colorScheme.outlineVariant,
-                        barColor: _metric.color[700]!,
-                        labelColor: Theme.of(
-                          context,
-                        ).colorScheme.onSurfaceVariant,
-                      ),
+                      painter: _metric == _EatLogMetric.pfcBalance
+                          ? _PfcBalanceChartPainter(
+                              days: chronologicalDays,
+                              proteinColor: Colors.green[600]!,
+                              fatColor: Colors.teal[500]!,
+                              carbohydrateColor: Colors.lightGreen[600]!,
+                              emptyColor: Theme.of(
+                                context,
+                              ).colorScheme.surfaceContainerHighest,
+                              gridColor: Theme.of(
+                                context,
+                              ).colorScheme.outlineVariant,
+                              labelColor: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            )
+                          : _WeeklyNutritionChartPainter(
+                              days: chronologicalDays,
+                              metric: _metric,
+                              gridColor: Theme.of(
+                                context,
+                              ).colorScheme.outlineVariant,
+                              barColor: _metric.color[700]!,
+                              labelColor: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _metricTotal(
-                          label: '合計',
-                          value: _formatMetricValue(total),
-                          icon: Icons.functions,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _metricTotal(
-                          label: '一日の平均',
-                          value: _formatMetricValue(average),
-                          icon: Icons.timeline,
-                        ),
-                      ),
-                    ],
-                  ),
+                  _metricSummary(chronologicalDays, total, average),
                 ],
               ),
             ),
@@ -1179,6 +1196,100 @@ class _EatLogContentState extends State<_EatLogContent> {
           _buildEatLogTimeline(context, meals),
         ],
       ),
+    );
+  }
+
+  Widget _metricSummary(
+    List<_WeeklyDaySummary> days,
+    double total,
+    double average,
+  ) {
+    if (_metric != _EatLogMetric.pfcBalance) {
+      return Row(
+        children: [
+          Expanded(
+            child: _metricTotal(
+              label: '合計',
+              value: _formatMetricValue(total),
+              icon: Icons.functions,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _metricTotal(
+              label: '一日の平均',
+              value: _formatMetricValue(average),
+              icon: Icons.timeline,
+            ),
+          ),
+        ],
+      );
+    }
+
+    final balance = _PfcBalance.fromTotals(
+      days.fold(
+        const NutritionTotals.empty(),
+        (total, day) => total + day.totals,
+      ),
+    );
+    return Row(
+      children: [
+        Expanded(
+          child: _pfcSummaryCard('P', balance.proteinRatio, Colors.green),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: _pfcSummaryCard('F', balance.fatRatio, Colors.teal)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _pfcSummaryCard(
+            'C',
+            balance.carbohydrateRatio,
+            Colors.lightGreen,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _pfcSummaryCard(String label, double ratio, MaterialColor color) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.circle, color: color[600], size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: Theme.of(context).textTheme.bodySmall),
+                Text(
+                  '${(ratio * 100).round()}%',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _pfcLegend(BuildContext context) {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 8,
+      children: const [
+        _PfcLegendItem(label: 'P タンパク質', color: Colors.green),
+        _PfcLegendItem(label: 'F 脂質', color: Colors.teal),
+        _PfcLegendItem(label: 'C 炭水化物', color: Colors.lightGreen),
+      ],
     );
   }
 
@@ -1365,6 +1476,182 @@ class _EatLogContentState extends State<_EatLogContent> {
   static String _formatDateTime(DateTime dateTime) {
     String two(int value) => value.toString().padLeft(2, '0');
     return '${dateTime.year}/${two(dateTime.month)}/${two(dateTime.day)} ${two(dateTime.hour)}:${two(dateTime.minute)}';
+  }
+}
+
+class _PfcLegendItem extends StatelessWidget {
+  const _PfcLegendItem({required this.label, required this.color});
+
+  final String label;
+  final MaterialColor color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color[600], shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 5),
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+      ],
+    );
+  }
+}
+
+class _PfcBalance {
+  const _PfcBalance({
+    required this.proteinRatio,
+    required this.fatRatio,
+    required this.carbohydrateRatio,
+  });
+
+  final double proteinRatio;
+  final double fatRatio;
+  final double carbohydrateRatio;
+
+  bool get hasData => proteinRatio + fatRatio + carbohydrateRatio > 0;
+
+  factory _PfcBalance.fromTotals(NutritionTotals totals) {
+    final proteinKcal = totals.proteinG * 4;
+    final fatKcal = totals.fatG * 9;
+    final carbohydrateKcal = totals.carbohydrateG * 4;
+    final total = proteinKcal + fatKcal + carbohydrateKcal;
+    if (total <= 0) {
+      return const _PfcBalance(
+        proteinRatio: 0,
+        fatRatio: 0,
+        carbohydrateRatio: 0,
+      );
+    }
+
+    return _PfcBalance(
+      proteinRatio: proteinKcal / total,
+      fatRatio: fatKcal / total,
+      carbohydrateRatio: carbohydrateKcal / total,
+    );
+  }
+}
+
+class _PfcBalanceChartPainter extends CustomPainter {
+  const _PfcBalanceChartPainter({
+    required this.days,
+    required this.proteinColor,
+    required this.fatColor,
+    required this.carbohydrateColor,
+    required this.emptyColor,
+    required this.gridColor,
+    required this.labelColor,
+  });
+
+  final List<_WeeklyDaySummary> days;
+  final Color proteinColor;
+  final Color fatColor;
+  final Color carbohydrateColor;
+  final Color emptyColor;
+  final Color gridColor;
+  final Color labelColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (days.isEmpty) return;
+
+    const left = 34.0;
+    const right = 10.0;
+    const top = 8.0;
+    const bottom = 42.0;
+    const barWidth = 18.0;
+    final chartWidth = size.width - left - right;
+    final chartHeight = size.height - top - bottom;
+    final gridPaint = Paint()
+      ..color = gridColor
+      ..strokeWidth = 1;
+    final labelPainter = TextPainter(textDirection: TextDirection.ltr);
+
+    for (var i = 0; i <= 4; i++) {
+      final y = top + chartHeight * i / 4;
+      canvas.drawLine(
+        Offset(left, y),
+        Offset(size.width - right, y),
+        gridPaint,
+      );
+      final value = 100 - i * 25;
+      labelPainter.text = TextSpan(
+        text: '$value%',
+        style: TextStyle(color: labelColor, fontSize: 11),
+      );
+      labelPainter.layout();
+      labelPainter.paint(canvas, Offset(0, y - labelPainter.height / 2));
+    }
+
+    final step = days.length == 1 ? chartWidth : chartWidth / (days.length - 1);
+    for (var i = 0; i < days.length; i++) {
+      final day = days[i];
+      final balance = _PfcBalance.fromTotals(day.totals);
+      final x = left + step * i;
+      final baseY = top + chartHeight;
+      final leftX = x - barWidth / 2;
+
+      if (!balance.hasData) {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(leftX, top, barWidth, chartHeight),
+            const Radius.circular(5),
+          ),
+          Paint()
+            ..color = emptyColor
+            ..style = PaintingStyle.fill,
+        );
+      } else {
+        var currentBottom = baseY;
+        void drawSegment(double ratio, Color color) {
+          if (ratio <= 0) return;
+          final height = chartHeight * ratio;
+          final rect = Rect.fromLTWH(
+            leftX,
+            currentBottom - height,
+            barWidth,
+            height,
+          );
+          canvas.drawRect(
+            rect,
+            Paint()
+              ..color = color
+              ..style = PaintingStyle.fill,
+          );
+          currentBottom -= height;
+        }
+
+        drawSegment(balance.proteinRatio, proteinColor);
+        drawSegment(balance.fatRatio, fatColor);
+        drawSegment(balance.carbohydrateRatio, carbohydrateColor);
+      }
+
+      final showLabel = i == 0 || i == days.length - 1;
+      labelPainter.text = TextSpan(
+        text: showLabel ? '${day.day.month}/${day.day.day}' : '•',
+        style: TextStyle(color: labelColor, fontSize: showLabel ? 12 : 15),
+      );
+      labelPainter.layout();
+      labelPainter.paint(
+        canvas,
+        Offset(x - labelPainter.width / 2, baseY + 14),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_PfcBalanceChartPainter oldDelegate) {
+    return days != oldDelegate.days ||
+        proteinColor != oldDelegate.proteinColor ||
+        fatColor != oldDelegate.fatColor ||
+        carbohydrateColor != oldDelegate.carbohydrateColor ||
+        emptyColor != oldDelegate.emptyColor ||
+        gridColor != oldDelegate.gridColor ||
+        labelColor != oldDelegate.labelColor;
   }
 }
 
