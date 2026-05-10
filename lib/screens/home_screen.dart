@@ -355,10 +355,6 @@ class _HomeScreenState extends State<HomeScreen> {
           _buildImageSection(),
           const SizedBox(height: 12),
           _buildActionButtons(),
-          if (_activeModelPath != null || _lastAnalyzeLatencyMs != null) ...[
-            const SizedBox(height: 12),
-            _buildInferenceStatusCard(),
-          ],
           if (_isAnalyzing) ...[
             const SizedBox(height: 12),
             _buildLoadingIndicator(),
@@ -399,6 +395,8 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ),
+        const SizedBox(height: 12),
+        _buildInferenceStatusCard(),
       ],
     );
   }
