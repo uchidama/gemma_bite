@@ -40,7 +40,7 @@ app.*.symbols
 app.*.map.json
 
 # Screenshots
-screenshot.png
+screenshot*.png
 
 # Android Studio will place build artifacts here
 /android/app/debug
