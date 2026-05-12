@@ -279,6 +279,16 @@ class _HomeScreenState extends State<HomeScreen> {
     await _saveLog(_log.copyWith(meals: meals));
   }
 
+  Future<void> _deleteMeal(MealEntry mealToDelete) async {
+    final meals =
+        _log.meals.where((meal) => meal.id != mealToDelete.id).toList()
+          ..sort(_sortMeals);
+    await _saveLog(_log.copyWith(meals: meals));
+    if (mounted && _selectedMealId == mealToDelete.id) {
+      setState(() => _selectedMealId = null);
+    }
+  }
+
   int _sortMeals(MealEntry a, MealEntry b) => b.eatenAt.compareTo(a.eatenAt);
 
   void _maybeShowProfileDialog() {
@@ -363,6 +373,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 overview: weeklyOverview,
                 gemmaService: _gemmaService,
                 onMealUpdated: _replaceMeal,
+                onMealDeleted: _deleteMeal,
               ),
               _MainTab.consult => _buildConsultTab(dailyOverview),
               _MainTab.settings => _buildSettingsTab(),
@@ -1202,6 +1213,7 @@ class _HomeScreenState extends State<HomeScreen> {
           meal: meal,
           gemmaService: _gemmaService,
           onMealUpdated: _replaceMeal,
+          onMealDeleted: _deleteMeal,
         ),
       ),
     );
@@ -1309,11 +1321,13 @@ class _EatLogContent extends StatefulWidget {
     required this.overview,
     this.gemmaService,
     this.onMealUpdated,
+    this.onMealDeleted,
   });
 
   final _WeeklyOverview overview;
   final GemmaService? gemmaService;
   final Future<void> Function(MealEntry meal)? onMealUpdated;
+  final Future<void> Function(MealEntry meal)? onMealDeleted;
 
   @override
   State<_EatLogContent> createState() => _EatLogContentState();
@@ -1688,7 +1702,12 @@ class _EatLogContentState extends State<_EatLogContent> {
   Future<void> _openMealDetail(MealEntry meal) async {
     final gemmaService = widget.gemmaService;
     final onMealUpdated = widget.onMealUpdated;
-    if (gemmaService == null || onMealUpdated == null) return;
+    final onMealDeleted = widget.onMealDeleted;
+    if (gemmaService == null ||
+        onMealUpdated == null ||
+        onMealDeleted == null) {
+      return;
+    }
 
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -1696,6 +1715,7 @@ class _EatLogContentState extends State<_EatLogContent> {
           meal: meal,
           gemmaService: gemmaService,
           onMealUpdated: onMealUpdated,
+          onMealDeleted: onMealDeleted,
         ),
       ),
     );
@@ -2456,11 +2476,13 @@ class MealDetailScreen extends StatefulWidget {
     required this.meal,
     required this.gemmaService,
     required this.onMealUpdated,
+    required this.onMealDeleted,
   });
 
   final MealEntry meal;
   final GemmaService gemmaService;
   final Future<void> Function(MealEntry meal) onMealUpdated;
+  final Future<void> Function(MealEntry meal) onMealDeleted;
 
   @override
   State<MealDetailScreen> createState() => _MealDetailScreenState();
@@ -2634,6 +2656,40 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
     await widget.onMealUpdated(meal);
   }
 
+  Future<void> _confirmDeleteMeal() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('この食事を削除しますか？'),
+          content: const Text('削除すると、食事ログと栄養集計からこの記録が取り除かれます。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('キャンセル'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+              ),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('削除'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true) return;
+
+    await widget.onMealDeleted(_meal);
+    if (!mounted) return;
+    navigator.pop();
+    messenger.showSnackBar(const SnackBar(content: Text('食事を削除しました。')));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -2771,6 +2827,18 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                   tooltip: '送信',
                 ),
               ],
+            ),
+            const Divider(height: 32),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.error,
+                ),
+                onPressed: _isRefining ? null : _confirmDeleteMeal,
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('この食事を削除'),
+              ),
             ),
           ],
         ),
