@@ -163,3 +163,15 @@ adb pull "/sdcard/Pictures/Screenshots/$latest" .
 
 ・Googleカレンダーとの連携。
 　持久力が求められる運動をする場合: 「明日は長距離を走る予定なら、もう少し炭水化物を多めに摂っておきましょう」といった助言。
+
+#### アイコン更新手順
+
+- `flutter run` ではランチャーアイコンは再生成されません。
+- 元画像を更新します。
+  - `assets/app_icon.png`
+  - `assets/app_icon_foreground.png`（Android adaptive icon 用）
+- アイコン生成コマンドを実行します。
+
+```bash
+flutter pub run flutter_launcher_icons:main
+```
