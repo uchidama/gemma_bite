@@ -1,5 +1,35 @@
 import 'package:flutter/services.dart';
 
+class TtsVoice {
+  const TtsVoice({
+    required this.name,
+    required this.locale,
+    required this.quality,
+    required this.latency,
+    required this.requiresNetwork,
+  });
+
+  final String name;
+  final String locale;
+  final int quality;
+  final int latency;
+  final bool requiresNetwork;
+
+  String get label {
+    return '$name ($locale)';
+  }
+
+  factory TtsVoice.fromJson(Map<dynamic, dynamic> json) {
+    return TtsVoice(
+      name: json['name'] as String? ?? '',
+      locale: json['locale'] as String? ?? '',
+      quality: json['quality'] as int? ?? 0,
+      latency: json['latency'] as int? ?? 0,
+      requiresNetwork: json['requiresNetwork'] as bool? ?? false,
+    );
+  }
+}
+
 class GemmaService {
   static const _channel = MethodChannel('com.eyuras.gemma_bite/gemma');
 
@@ -61,9 +91,21 @@ class GemmaService {
     return result ?? '';
   }
 
-  Future<void> speakText(String text) async {
+  Future<List<TtsVoice>> listTtsVoices() async {
+    final voices = await _channel.invokeMethod<List<dynamic>>('listTtsVoices');
+    return (voices ?? const [])
+        .whereType<Map<dynamic, dynamic>>()
+        .map(TtsVoice.fromJson)
+        .where((voice) => voice.name.isNotEmpty)
+        .toList();
+  }
+
+  Future<void> speakText(String text, {String? voiceName}) async {
     if (text.trim().isEmpty) return;
-    await _channel.invokeMethod('speakText', {'text': text});
+    await _channel.invokeMethod('speakText', {
+      'text': text,
+      'voiceName': voiceName,
+    });
   }
 
   Future<void> stopSpeaking() async {

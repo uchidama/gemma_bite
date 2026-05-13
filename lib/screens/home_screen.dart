@@ -17,10 +17,14 @@ class HomeScreen extends StatefulWidget {
     super.key,
     required this.themeMode,
     required this.onThemeModeChanged,
+    required this.ttsVoiceName,
+    required this.onTtsVoiceNameChanged,
   });
 
   final ThemeMode themeMode;
   final Future<void> Function(ThemeMode themeMode) onThemeModeChanged;
+  final String? ttsVoiceName;
+  final Future<void> Function(String? ttsVoiceName) onTtsVoiceNameChanged;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -104,6 +108,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLogLoading = true;
   bool _isAnalyzing = false;
   bool _isConsulting = false;
+  bool _isLoadingTtsVoices = false;
   bool _isConsultVoiceEnabled = true;
   bool _hasTriedAutoModelLoad = false;
   bool _hasPromptedForProfile = false;
@@ -111,6 +116,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<String> _availableModels = [];
   String? _activeModelPath;
   int? _lastAnalyzeLatencyMs;
+  List<TtsVoice> _ttsVoices = [];
   List<_PendingMealImage> _pendingImages = [];
   int _analyzeTotalCount = 0;
   int _analyzeCompletedCount = 0;
@@ -131,6 +137,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _loadModelInfo();
     _loadLog();
+    _loadTtsVoices();
   }
 
   Future<void> _loadLog() async {
@@ -222,6 +229,20 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _displayModelName(String path) => path.split('/').last;
+
+  Future<void> _loadTtsVoices() async {
+    if (mounted) setState(() => _isLoadingTtsVoices = true);
+    try {
+      final voices = await _gemmaService.listTtsVoices();
+      if (!mounted) return;
+      setState(() {
+        _ttsVoices = voices;
+        _isLoadingTtsVoices = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingTtsVoices = false);
+    }
+  }
 
   Future<void> _pickImage(ImageSource source) async {
     try {
@@ -791,7 +812,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _speakConsultText(String text) async {
     try {
-      await _gemmaService.speakText(text);
+      await _gemmaService.speakText(text, voiceName: widget.ttsVoiceName);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -879,6 +900,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildSettingsTab() {
     final isDark = widget.themeMode == ThemeMode.dark;
+    final selectedVoiceName =
+        _ttsVoices.any((voice) => voice.name == widget.ttsVoiceName)
+        ? widget.ttsVoiceName
+        : null;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -895,6 +920,81 @@ class _HomeScreenState extends State<HomeScreen> {
                   enabled ? ThemeMode.dark : ThemeMode.light,
                 );
               },
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.record_voice_over),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        '読み上げ音声',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      tooltip: '音声一覧を更新',
+                      onPressed: _isLoadingTtsVoices ? null : _loadTtsVoices,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (_isLoadingTtsVoices)
+                  const LinearProgressIndicator()
+                else
+                  DropdownButtonFormField<String?>(
+                    initialValue: selectedVoiceName,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('端末のデフォルト音声'),
+                      ),
+                      ..._ttsVoices.map(
+                        (voice) => DropdownMenuItem<String?>(
+                          value: voice.name,
+                          child: Text(
+                            voice.label,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ],
+                    onChanged: (voiceName) async {
+                      await widget.onTtsVoiceNameChanged(voiceName);
+                    },
+                  ),
+                const SizedBox(height: 8),
+                Text(
+                  _ttsVoices.isEmpty
+                      ? '端末に追加の日本語音声が見つからない場合は、Androidの音声合成設定から追加できます。'
+                      : '通信が必要な音声は表示せず、端末内で使える日本語音声だけを表示します。性別情報は端末側で標準化されていません。',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: OutlinedButton.icon(
+                    onPressed: () =>
+                        _speakConsultText('こんにちは。Gemma Biteの読み上げ音声テストです。'),
+                    icon: const Icon(Icons.volume_up, size: 18),
+                    label: const Text('試聴'),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

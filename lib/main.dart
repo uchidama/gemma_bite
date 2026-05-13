@@ -17,6 +17,7 @@ class GemmaBiteApp extends StatefulWidget {
 class _GemmaBiteAppState extends State<GemmaBiteApp> {
   final _settingsRepository = AppSettingsRepository();
   ThemeMode _themeMode = ThemeMode.light;
+  String? _ttsVoiceName;
 
   @override
   void initState() {
@@ -25,14 +26,22 @@ class _GemmaBiteAppState extends State<GemmaBiteApp> {
   }
 
   Future<void> _loadSettings() async {
-    final themeMode = await _settingsRepository.loadThemeMode();
+    final settings = await _settingsRepository.load();
     if (!mounted) return;
-    setState(() => _themeMode = themeMode);
+    setState(() {
+      _themeMode = settings.themeMode;
+      _ttsVoiceName = settings.ttsVoiceName;
+    });
   }
 
   Future<void> _setThemeMode(ThemeMode themeMode) async {
     setState(() => _themeMode = themeMode);
     await _settingsRepository.saveThemeMode(themeMode);
+  }
+
+  Future<void> _setTtsVoiceName(String? ttsVoiceName) async {
+    setState(() => _ttsVoiceName = ttsVoiceName);
+    await _settingsRepository.saveTtsVoiceName(ttsVoiceName);
   }
 
   @override
@@ -56,6 +65,8 @@ class _GemmaBiteAppState extends State<GemmaBiteApp> {
       home: HomeScreen(
         themeMode: _themeMode,
         onThemeModeChanged: _setThemeMode,
+        ttsVoiceName: _ttsVoiceName,
+        onTtsVoiceNameChanged: _setTtsVoiceName,
       ),
     );
   }
