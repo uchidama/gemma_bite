@@ -78,6 +78,18 @@ class _AiConsultMessage {
   final DateTime createdAt;
 }
 
+class _PendingMealImage {
+  const _PendingMealImage({
+    required this.file,
+    required this.eatenAt,
+    required this.fingerprint,
+  });
+
+  final File file;
+  final DateTime eatenAt;
+  final String fingerprint;
+}
+
 class _HomeScreenState extends State<HomeScreen> {
   static const _nextMealSuggestionPrompt = '次の食事を提案して';
 
@@ -98,8 +110,9 @@ class _HomeScreenState extends State<HomeScreen> {
   List<String> _availableModels = [];
   String? _activeModelPath;
   int? _lastAnalyzeLatencyMs;
-  File? _selectedImage;
-  DateTime? _selectedImageTime;
+  List<_PendingMealImage> _pendingImages = [];
+  int _analyzeTotalCount = 0;
+  int _analyzeCompletedCount = 0;
   MealLog _log = const MealLog();
   List<_AiConsultMessage> _consultMessages = [
     _AiConsultMessage(
@@ -211,92 +224,128 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
-      final picked = await _imagePicker.pickImage(
-        source: source,
-        maxWidth: 1280,
-        maxHeight: 1280,
-        imageQuality: 85,
-      );
-      if (picked == null || !mounted) return;
+      final pickedImages = await _pickMealImages(source);
+      if (pickedImages.isEmpty || !mounted) return;
 
-      final imageFile = File(picked.path);
-      final imageFingerprint = await _imageFingerprint(imageFile);
-      final duplicateMeal = await _findDuplicateMeal(
-        imageFile,
-        imageFingerprint,
-      );
-      if (duplicateMeal != null) {
-        if (!mounted) return;
+      final pendingImages = <_PendingMealImage>[];
+      final seenFingerprints = <String>{};
+      final duplicateMeals = <MealEntry>[];
+      var duplicateSelectionCount = 0;
+
+      for (final picked in pickedImages) {
+        final pendingImage = await _pendingMealImageFromXFile(
+          picked,
+          isCamera: source == ImageSource.camera,
+        );
+        final duplicateMeal = await _findDuplicateMeal(
+          pendingImage.file,
+          pendingImage.fingerprint,
+        );
+        if (duplicateMeal != null) {
+          duplicateMeals.add(duplicateMeal);
+          continue;
+        }
+        if (!seenFingerprints.add(pendingImage.fingerprint)) {
+          duplicateSelectionCount++;
+          continue;
+        }
+        pendingImages.add(pendingImage);
+      }
+
+      if (!mounted) return;
+      if (pendingImages.isEmpty) {
         setState(() {
-          _selectedImage = null;
-          _selectedImageTime = null;
-          _selectedMealId = duplicateMeal.id;
+          _pendingImages = [];
+          _selectedMealId = duplicateMeals.isEmpty
+              ? _selectedMealId
+              : duplicateMeals.first.id;
         });
-        _showDuplicateMealSnackBar(duplicateMeal);
+        _showDuplicateSelectionSnackBar(
+          duplicateMeals: duplicateMeals,
+          duplicateSelectionCount: duplicateSelectionCount,
+        );
         return;
       }
 
-      final timestamp = source == ImageSource.camera
-          ? DateTime.now()
-          : await _photoTakenAtReader.readTakenAt(imageFile.path) ??
-                await imageFile.lastModified();
       setState(() {
-        _selectedImage = imageFile;
-        _selectedImageTime = timestamp;
+        _pendingImages = pendingImages;
+        _analyzeTotalCount = 0;
+        _analyzeCompletedCount = 0;
         _error = null;
       });
+      if (duplicateMeals.isNotEmpty || duplicateSelectionCount > 0) {
+        _showDuplicateSelectionSnackBar(
+          duplicateMeals: duplicateMeals,
+          duplicateSelectionCount: duplicateSelectionCount,
+        );
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     }
   }
 
   Future<void> _analyzeFood() async {
-    if (_selectedImage == null || !_gemmaService.isInitialized) return;
+    if (_pendingImages.isEmpty || !_gemmaService.isInitialized) return;
 
+    final pendingImages = List<_PendingMealImage>.of(_pendingImages);
     setState(() {
       _isAnalyzing = true;
+      _analyzeTotalCount = pendingImages.length;
+      _analyzeCompletedCount = 0;
       _error = null;
     });
-    try {
-      final imageFingerprint = await _imageFingerprint(_selectedImage!);
-      final duplicateMeal = await _findDuplicateMeal(
-        _selectedImage!,
-        imageFingerprint,
-      );
-      if (duplicateMeal != null) {
-        if (mounted) {
-          setState(() {
-            _isAnalyzing = false;
-            _selectedImage = null;
-            _selectedImageTime = null;
-            _selectedMealId = duplicateMeal.id;
-          });
-          _showDuplicateMealSnackBar(duplicateMeal);
-        }
-        return;
-      }
 
-      final stopwatch = Stopwatch()..start();
-      final response = await _gemmaService.analyzeFood(_selectedImage!.path);
+    final stopwatch = Stopwatch()..start();
+    final registeredMeals = <MealEntry>[];
+    var skippedCount = 0;
+    try {
+      for (final pendingImage in pendingImages) {
+        final duplicateMeal = await _findDuplicateMeal(
+          pendingImage.file,
+          pendingImage.fingerprint,
+        );
+        if (duplicateMeal != null) {
+          skippedCount++;
+          if (mounted) {
+            setState(() => _analyzeCompletedCount++);
+          }
+          continue;
+        }
+
+        final response = await _gemmaService.analyzeFood(
+          pendingImage.file.path,
+        );
+        final meal = MealEntry.fromGemmaJson(
+          imagePath: pendingImage.file.path,
+          imageFingerprint: pendingImage.fingerprint,
+          eatenAt: pendingImage.eatenAt,
+          response: response,
+        );
+        final meals = [meal, ..._log.meals]..sort(_sortMeals);
+        await _saveLog(_log.copyWith(meals: meals));
+        registeredMeals.add(meal);
+        if (mounted) {
+          setState(() => _analyzeCompletedCount++);
+        }
+      }
       stopwatch.stop();
-      final meal = MealEntry.fromGemmaJson(
-        imagePath: _selectedImage!.path,
-        imageFingerprint: imageFingerprint,
-        eatenAt: _selectedImageTime ?? DateTime.now(),
-        response: response,
-      );
-      await _saveLog(
-        _log.copyWith(meals: [meal, ..._log.meals]..sort(_sortMeals)),
-      );
       if (mounted) {
         setState(() {
           _isAnalyzing = false;
-          _selectedMealId = meal.id;
-          _selectedImage = null;
-          _selectedImageTime = null;
+          if (registeredMeals.isNotEmpty) {
+            _selectedMealId = registeredMeals.first.id;
+          }
+          _pendingImages = [];
           _lastAnalyzeLatencyMs = stopwatch.elapsedMilliseconds;
         });
-        await _openMealDetail(meal);
+        if (pendingImages.length == 1 && registeredMeals.length == 1) {
+          await _openMealDetail(registeredMeals.first);
+        } else {
+          _showBatchAnalyzeSnackBar(
+            registeredCount: registeredMeals.length,
+            skippedCount: skippedCount,
+          );
+        }
       }
     } catch (e) {
       if (mounted) setState(() => _error = '分析結果を記録できませんでした: $e');
@@ -325,6 +374,40 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   int _sortMeals(MealEntry a, MealEntry b) => b.eatenAt.compareTo(a.eatenAt);
+
+  Future<List<XFile>> _pickMealImages(ImageSource source) async {
+    if (source == ImageSource.gallery) {
+      return _imagePicker.pickMultiImage(
+        maxWidth: 1280,
+        maxHeight: 1280,
+        imageQuality: 85,
+      );
+    }
+
+    final picked = await _imagePicker.pickImage(
+      source: source,
+      maxWidth: 1280,
+      maxHeight: 1280,
+      imageQuality: 85,
+    );
+    return picked == null ? const [] : [picked];
+  }
+
+  Future<_PendingMealImage> _pendingMealImageFromXFile(
+    XFile picked, {
+    required bool isCamera,
+  }) async {
+    final imageFile = File(picked.path);
+    final timestamp = isCamera
+        ? DateTime.now()
+        : await _photoTakenAtReader.readTakenAt(imageFile.path) ??
+              await imageFile.lastModified();
+    return _PendingMealImage(
+      file: imageFile,
+      eatenAt: timestamp,
+      fingerprint: await _imageFingerprint(imageFile),
+    );
+  }
 
   Future<String> _imageFingerprint(File file) async {
     final bytes = await file.readAsBytes();
@@ -364,14 +447,34 @@ class _HomeScreenState extends State<HomeScreen> {
     return null;
   }
 
-  void _showDuplicateMealSnackBar(MealEntry meal) {
+  void _showDuplicateSelectionSnackBar({
+    required List<MealEntry> duplicateMeals,
+    required int duplicateSelectionCount,
+  }) {
+    final duplicateCount = duplicateMeals.length + duplicateSelectionCount;
+    if (duplicateCount == 0) return;
+
+    final firstMeal = duplicateMeals.isEmpty ? null : duplicateMeals.first;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('この写真はすでに「${meal.foodName}」として記録済みです。'),
-        action: SnackBarAction(
-          label: '開く',
-          onPressed: () => _openMealDetail(meal),
-        ),
+        content: Text('重複している写真 $duplicateCount枚をスキップしました。'),
+        action: firstMeal == null
+            ? null
+            : SnackBarAction(
+                label: '開く',
+                onPressed: () => _openMealDetail(firstMeal),
+              ),
+      ),
+    );
+  }
+
+  void _showBatchAnalyzeSnackBar({
+    required int registeredCount,
+    required int skippedCount,
+  }) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('分析完了: $registeredCount枚を登録、$skippedCount枚をスキップしました。'),
       ),
     );
   }
@@ -428,8 +531,9 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: () async {
                 await _gemmaService.dispose();
                 setState(() {
-                  _selectedImage = null;
-                  _selectedImageTime = null;
+                  _pendingImages = [];
+                  _analyzeTotalCount = 0;
+                  _analyzeCompletedCount = 0;
                   _hasTriedAutoModelLoad = false;
                   _activeModelPath = null;
                 });
@@ -1111,22 +1215,62 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildImageSection() {
     final colorScheme = Theme.of(context).colorScheme;
+    final pendingImages = _pendingImages;
     return Card(
       clipBehavior: Clip.antiAlias,
-      child: _selectedImage != null
+      child: pendingImages.isNotEmpty
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Image.file(
-                  _selectedImage!,
+                  pendingImages.first.file,
                   height: 230,
                   width: double.infinity,
                   fit: BoxFit.cover,
                 ),
                 Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Text('食事時刻: ${_formatDateTime(_selectedImageTime)}'),
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          pendingImages.length == 1
+                              ? '食事時刻: ${_formatDateTime(pendingImages.first.eatenAt)}'
+                              : '${pendingImages.length}枚を選択中',
+                        ),
+                      ),
+                      if (pendingImages.length > 1)
+                        Text(
+                          '先頭: ${_formatDateTime(pendingImages.first.eatenAt)}',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: colorScheme.onSurfaceVariant),
+                        ),
+                    ],
+                  ),
                 ),
+                if (pendingImages.length > 1)
+                  SizedBox(
+                    height: 72,
+                    child: ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      scrollDirection: Axis.horizontal,
+                      itemBuilder: (context, index) {
+                        final pendingImage = pendingImages[index];
+                        return ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Image.file(
+                            pendingImage.file,
+                            width: 72,
+                            height: 60,
+                            fit: BoxFit.cover,
+                          ),
+                        );
+                      },
+                      separatorBuilder: (context, index) =>
+                          const SizedBox(width: 8),
+                      itemCount: pendingImages.length,
+                    ),
+                  ),
               ],
             )
           : Container(
@@ -1179,7 +1323,7 @@ class _HomeScreenState extends State<HomeScreen> {
         Expanded(
           child: FilledButton.icon(
             onPressed:
-                (_selectedImage != null &&
+                (_pendingImages.isNotEmpty &&
                     !_isAnalyzing &&
                     _gemmaService.isInitialized)
                 ? _analyzeFood
@@ -1193,14 +1337,20 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildLoadingIndicator() {
-    return const Card(
+    final progressText = _analyzeTotalCount <= 1
+        ? 'Gemma が食事を分析中...'
+        : 'Gemma が食事を分析中... $_analyzeCompletedCount / $_analyzeTotalCount';
+    final progressValue = _analyzeTotalCount == 0
+        ? null
+        : _analyzeCompletedCount / _analyzeTotalCount;
+    return Card(
       child: Padding(
-        padding: EdgeInsets.all(24),
+        padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 12),
-            Text('Gemma が食事を分析中...'),
+            CircularProgressIndicator(value: progressValue),
+            const SizedBox(height: 12),
+            Text(progressText),
           ],
         ),
       ),
