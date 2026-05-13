@@ -61,8 +61,18 @@ class GemmaService {
     return result ?? '';
   }
 
+  Future<void> speakText(String text) async {
+    if (text.trim().isEmpty) return;
+    await _channel.invokeMethod('speakText', {'text': text});
+  }
+
+  Future<void> stopSpeaking() async {
+    await _channel.invokeMethod('stopSpeaking');
+  }
+
   Future<void> dispose() async {
     try {
+      await stopSpeaking();
       await _channel.invokeMethod('disposeModel');
     } catch (_) {}
     _isInitialized = false;

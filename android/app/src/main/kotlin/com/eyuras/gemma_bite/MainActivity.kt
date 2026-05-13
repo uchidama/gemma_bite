@@ -3,6 +3,7 @@ package com.eyuras.gemma_bite
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.speech.tts.TextToSpeech
 import com.google.android.gms.tasks.Task
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -18,6 +19,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
+import java.util.Locale
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.eyuras.gemma_bite/gemma"
@@ -28,6 +30,8 @@ class MainActivity : FlutterActivity() {
     private val inferenceMutex = Mutex()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var textToSpeech: TextToSpeech? = null
+    private var isTextToSpeechReady = false
 
     /**
      * 推論ごとに新しい Conversation を作って KV キャッシュ累積による OOM を防ぐ。
@@ -283,6 +287,22 @@ class MainActivity : FlutterActivity() {
                         }
                     }
 
+                    "speakText" -> {
+                        val text = call.argument<String>("text")
+                        if (text.isNullOrBlank()) {
+                            result.success(false)
+                            return@setMethodCallHandler
+                        }
+                        speakText(text, result)
+                    }
+
+                    "stopSpeaking" -> {
+                        mainHandler.post {
+                            textToSpeech?.stop()
+                            result.success(true)
+                        }
+                    }
+
                     "disposeModel" -> {
                         scope.launch {
                             try {
@@ -309,11 +329,48 @@ class MainActivity : FlutterActivity() {
         return File(context.getExternalFilesDir(null), "models")
     }
 
+    private fun speakText(text: String, result: MethodChannel.Result) {
+        mainHandler.post {
+            val currentTts = textToSpeech
+            if (currentTts != null && isTextToSpeechReady) {
+                currentTts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "consult_reply")
+                result.success(true)
+                return@post
+            }
+
+            textToSpeech?.shutdown()
+            isTextToSpeechReady = false
+            textToSpeech = TextToSpeech(this) { status ->
+                mainHandler.post {
+                    val tts = textToSpeech
+                    if (status != TextToSpeech.SUCCESS || tts == null) {
+                        result.error("TTS_INIT_ERROR", "音声読み上げを初期化できませんでした", null)
+                        return@post
+                    }
+
+                    val availability = tts.setLanguage(Locale.JAPANESE)
+                    if (availability == TextToSpeech.LANG_MISSING_DATA ||
+                        availability == TextToSpeech.LANG_NOT_SUPPORTED
+                    ) {
+                        result.error("TTS_LANG_ERROR", "日本語の音声読み上げに対応していません", null)
+                        return@post
+                    }
+
+                    isTextToSpeechReady = true
+                    tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "consult_reply")
+                    result.success(true)
+                }
+            }
+        }
+    }
+
     override fun onDestroy() {
         scope.cancel()
         try {
             conversation?.close()
             engine?.close()
+            textToSpeech?.stop()
+            textToSpeech?.shutdown()
         } catch (_: Exception) {}
         super.onDestroy()
     }

@@ -104,6 +104,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLogLoading = true;
   bool _isAnalyzing = false;
   bool _isConsulting = false;
+  bool _isConsultVoiceEnabled = true;
   bool _hasTriedAutoModelLoad = false;
   bool _hasPromptedForProfile = false;
   String? _modelDirectory;
@@ -496,6 +497,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _consultController.dispose();
+    _gemmaService.stopSpeaking();
     _gemmaService.dispose();
     super.dispose();
   }
@@ -630,6 +632,22 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: FilterChip(
+                  avatar: Icon(
+                    _isConsultVoiceEnabled ? Icons.volume_up : Icons.volume_off,
+                    size: 18,
+                  ),
+                  label: Text(_isConsultVoiceEnabled ? '音声ON' : '音声OFF'),
+                  selected: _isConsultVoiceEnabled,
+                  onSelected: (enabled) async {
+                    setState(() => _isConsultVoiceEnabled = enabled);
+                    if (!enabled) await _gemmaService.stopSpeaking();
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -737,13 +755,30 @@ class _HomeScreenState extends State<HomeScreen> {
               : colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Text(
-          message.text,
-          style: TextStyle(
-            color: isUser
-                ? colorScheme.onPrimaryContainer
-                : colorScheme.onSurfaceVariant,
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              message.text,
+              style: TextStyle(
+                color: isUser
+                    ? colorScheme.onPrimaryContainer
+                    : colorScheme.onSurfaceVariant,
+              ),
+            ),
+            if (!isUser) ...[
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerRight,
+                child: IconButton(
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.volume_up, size: 18),
+                  tooltip: '読み上げ',
+                  onPressed: () => _speakConsultText(message.text),
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -752,6 +787,17 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openConsultWithPrompt(String prompt) async {
     setState(() => _tab = _MainTab.consult);
     await _sendConsultMessage(prompt);
+  }
+
+  Future<void> _speakConsultText(String text) async {
+    try {
+      await _gemmaService.speakText(text);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('音声読み上げに失敗しました: $e')));
+    }
   }
 
   Future<void> _sendConsultMessage(String text) async {
@@ -774,16 +820,20 @@ class _HomeScreenState extends State<HomeScreen> {
         userMessage: prompt,
       );
       if (!mounted) return;
+      final replyText = response.trim().isEmpty
+          ? '提案を生成できませんでした。'
+          : response.trim();
       setState(() {
         _consultMessages = [
           ..._consultMessages,
           _AiConsultMessage(
             role: 'assistant',
-            text: response.trim().isEmpty ? '提案を生成できませんでした。' : response.trim(),
+            text: replyText,
             createdAt: DateTime.now(),
           ),
         ];
       });
+      if (_isConsultVoiceEnabled) await _speakConsultText(replyText);
     } catch (e) {
       if (!mounted) return;
       setState(() {
