@@ -220,6 +220,22 @@ class _HomeScreenState extends State<HomeScreen> {
       if (picked == null || !mounted) return;
 
       final imageFile = File(picked.path);
+      final imageFingerprint = await _imageFingerprint(imageFile);
+      final duplicateMeal = await _findDuplicateMeal(
+        imageFile,
+        imageFingerprint,
+      );
+      if (duplicateMeal != null) {
+        if (!mounted) return;
+        setState(() {
+          _selectedImage = null;
+          _selectedImageTime = null;
+          _selectedMealId = duplicateMeal.id;
+        });
+        _showDuplicateMealSnackBar(duplicateMeal);
+        return;
+      }
+
       final timestamp = source == ImageSource.camera
           ? DateTime.now()
           : await _photoTakenAtReader.readTakenAt(imageFile.path) ??
@@ -242,11 +258,30 @@ class _HomeScreenState extends State<HomeScreen> {
       _error = null;
     });
     try {
+      final imageFingerprint = await _imageFingerprint(_selectedImage!);
+      final duplicateMeal = await _findDuplicateMeal(
+        _selectedImage!,
+        imageFingerprint,
+      );
+      if (duplicateMeal != null) {
+        if (mounted) {
+          setState(() {
+            _isAnalyzing = false;
+            _selectedImage = null;
+            _selectedImageTime = null;
+            _selectedMealId = duplicateMeal.id;
+          });
+          _showDuplicateMealSnackBar(duplicateMeal);
+        }
+        return;
+      }
+
       final stopwatch = Stopwatch()..start();
       final response = await _gemmaService.analyzeFood(_selectedImage!.path);
       stopwatch.stop();
       final meal = MealEntry.fromGemmaJson(
         imagePath: _selectedImage!.path,
+        imageFingerprint: imageFingerprint,
         eatenAt: _selectedImageTime ?? DateTime.now(),
         response: response,
       );
@@ -290,6 +325,56 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   int _sortMeals(MealEntry a, MealEntry b) => b.eatenAt.compareTo(a.eatenAt);
+
+  Future<String> _imageFingerprint(File file) async {
+    final bytes = await file.readAsBytes();
+    var hashA = 0x811c9dc5;
+    var hashB = 0x01000193;
+    for (final byte in bytes) {
+      hashA = ((hashA ^ byte) * 0x01000193) & 0xffffffff;
+      hashB = ((hashB + byte) * 0x811c9dc5) & 0xffffffff;
+    }
+    final hexA = hashA.toRadixString(16).padLeft(8, '0');
+    final hexB = hashB.toRadixString(16).padLeft(8, '0');
+    return '${bytes.length}:$hexA$hexB';
+  }
+
+  Future<MealEntry?> _findDuplicateMeal(
+    File imageFile,
+    String imageFingerprint,
+  ) async {
+    for (final meal in _log.meals) {
+      final storedFingerprint = meal.imageFingerprint;
+      if (storedFingerprint != null && storedFingerprint == imageFingerprint) {
+        return meal;
+      }
+
+      if (meal.imagePath == imageFile.path) return meal;
+
+      final storedFile = File(meal.imagePath);
+      if (!await storedFile.exists()) continue;
+      try {
+        if (await _imageFingerprint(storedFile) == imageFingerprint) {
+          return meal;
+        }
+      } catch (_) {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  void _showDuplicateMealSnackBar(MealEntry meal) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('この写真はすでに「${meal.foodName}」として記録済みです。'),
+        action: SnackBarAction(
+          label: '開く',
+          onPressed: () => _openMealDetail(meal),
+        ),
+      ),
+    );
+  }
 
   void _maybeShowProfileDialog() {
     if (_hasPromptedForProfile ||

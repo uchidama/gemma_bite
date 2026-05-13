@@ -112,6 +112,7 @@ class MealEntry {
   const MealEntry({
     required this.id,
     required this.imagePath,
+    required this.imageFingerprint,
     required this.eatenAt,
     required this.foodName,
     required this.summary,
@@ -124,6 +125,7 @@ class MealEntry {
 
   final String id;
   final String imagePath;
+  final String? imageFingerprint;
   final DateTime eatenAt;
   final String foodName;
   final String summary;
@@ -136,6 +138,7 @@ class MealEntry {
   bool get needsClarification => questions.isNotEmpty;
 
   MealEntry copyWith({
+    String? imageFingerprint,
     String? foodName,
     String? summary,
     NutritionTotals? nutrition,
@@ -147,6 +150,7 @@ class MealEntry {
     return MealEntry(
       id: id,
       imagePath: imagePath,
+      imageFingerprint: imageFingerprint ?? this.imageFingerprint,
       eatenAt: eatenAt,
       foodName: foodName ?? this.foodName,
       summary: summary ?? this.summary,
@@ -162,6 +166,7 @@ class MealEntry {
     return {
       'id': id,
       'imagePath': imagePath,
+      'imageFingerprint': imageFingerprint,
       'eatenAt': eatenAt.toIso8601String(),
       'foodName': foodName,
       'summary': summary,
@@ -174,11 +179,15 @@ class MealEntry {
   }
 
   factory MealEntry.fromJson(Map<String, dynamic> json) {
+    final imageFingerprint = json['imageFingerprint'] as String?;
     final entry = MealEntry(
       id:
           json['id'] as String? ??
           DateTime.now().microsecondsSinceEpoch.toString(),
       imagePath: json['imagePath'] as String? ?? '',
+      imageFingerprint: imageFingerprint?.trim().isEmpty == true
+          ? null
+          : imageFingerprint,
       eatenAt:
           DateTime.tryParse(json['eatenAt'] as String? ?? '') ?? DateTime.now(),
       foodName: json['foodName'] as String? ?? '食事',
@@ -202,6 +211,7 @@ class MealEntry {
 
   static MealEntry fromGemmaJson({
     required String imagePath,
+    String? imageFingerprint,
     required DateTime eatenAt,
     required String response,
   }) {
@@ -211,6 +221,7 @@ class MealEntry {
     } on FormatException {
       return _fromGemmaText(
         imagePath: imagePath,
+        imageFingerprint: imageFingerprint,
         eatenAt: eatenAt,
         response: response,
       );
@@ -225,6 +236,7 @@ class MealEntry {
     return MealEntry(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       imagePath: imagePath,
+      imageFingerprint: imageFingerprint,
       eatenAt: eatenAt,
       foodName: decoded['foodName'] as String? ?? '食事',
       summary: summary,
@@ -259,6 +271,7 @@ class MealEntry {
     try {
       final repaired = MealEntry.fromGemmaJson(
         imagePath: imagePath,
+        imageFingerprint: imageFingerprint,
         eatenAt: eatenAt,
         response: rawGemmaResponse,
       );
@@ -308,6 +321,7 @@ class MealEntry {
 
   static MealEntry _fromGemmaText({
     required String imagePath,
+    String? imageFingerprint,
     required DateTime eatenAt,
     required String response,
   }) {
@@ -349,6 +363,7 @@ class MealEntry {
     return MealEntry(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       imagePath: imagePath,
+      imageFingerprint: imageFingerprint,
       eatenAt: eatenAt,
       foodName: foodName,
       summary: summary.isEmpty ? 'Gemmaの分析結果を暫定記録しました。' : summary,
