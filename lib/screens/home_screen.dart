@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../domain/meal_models.dart';
+import '../l10n/app_strings.dart';
 import '../services/gemma_service.dart';
 import '../services/meal_repository.dart';
 import '../services/photo_taken_at_reader.dart';
@@ -19,12 +20,16 @@ class HomeScreen extends StatefulWidget {
     required this.onThemeModeChanged,
     required this.ttsVoiceName,
     required this.onTtsVoiceNameChanged,
+    required this.languageCode,
+    required this.onLanguageCodeChanged,
   });
 
   final ThemeMode themeMode;
   final Future<void> Function(ThemeMode themeMode) onThemeModeChanged;
   final String? ttsVoiceName;
   final Future<void> Function(String? ttsVoiceName) onTtsVoiceNameChanged;
+  final String languageCode;
+  final Future<void> Function(String languageCode) onLanguageCodeChanged;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -131,6 +136,12 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _selectedMealId;
   String? _error;
   _MainTab _tab = _MainTab.home;
+
+  String _t(String ja) => AppStrings.of(context).t(ja);
+
+  bool get _isJapanese => AppStrings.of(context).isJapanese;
+
+  String _consultPrompt(String ja, String en) => _isJapanese ? ja : en;
 
   @override
   void initState() {
@@ -536,21 +547,21 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: Text(switch (_tab) {
           _MainTab.home => 'Gemma Bite',
-          _MainTab.eatLog => 'イートログ',
-          _MainTab.consult => 'AI相談',
-          _MainTab.settings => '設定',
+          _MainTab.eatLog => _t('イートログ'),
+          _MainTab.consult => _t('AI相談'),
+          _MainTab.settings => _t('設定'),
         }),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
             icon: const Icon(Icons.person),
-            tooltip: '身体情報',
+            tooltip: _t('身体情報'),
             onPressed: _showProfileDialog,
           ),
           if (_gemmaService.isInitialized)
             IconButton(
               icon: const Icon(Icons.refresh),
-              tooltip: 'モデルをリセット',
+              tooltip: _t('モデルをリセット'),
               onPressed: () async {
                 await _gemmaService.dispose();
                 setState(() {
@@ -570,11 +581,20 @@ class _HomeScreenState extends State<HomeScreen> {
         onDestinationSelected: (index) {
           setState(() => _tab = _MainTab.values[index]);
         },
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home), label: 'ホーム'),
-          NavigationDestination(icon: Icon(Icons.insights), label: 'イートログ'),
-          NavigationDestination(icon: Icon(Icons.chat_bubble), label: 'AI相談'),
-          NavigationDestination(icon: Icon(Icons.settings), label: '設定'),
+        destinations: [
+          NavigationDestination(icon: const Icon(Icons.home), label: _t('ホーム')),
+          NavigationDestination(
+            icon: const Icon(Icons.insights),
+            label: _t('イートログ'),
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.chat_bubble),
+            label: _t('AI相談'),
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.settings),
+            label: _t('設定'),
+          ),
         ],
       ),
       body: _isLogLoading
@@ -609,9 +629,14 @@ class _HomeScreenState extends State<HomeScreen> {
           OutlinedButton.icon(
             onPressed: _isConsulting
                 ? null
-                : () => _openConsultWithPrompt(_nextMealSuggestionPrompt),
+                : () => _openConsultWithPrompt(
+                    _consultPrompt(
+                      _nextMealSuggestionPrompt,
+                      'Suggest my next meal',
+                    ),
+                  ),
             icon: const Icon(Icons.restaurant_menu, size: 18),
-            label: const Text('次の食事を相談'),
+            label: Text(_t('次の食事を相談')),
           ),
           if (_isAnalyzing) ...[
             const SizedBox(height: 12),
@@ -640,14 +665,14 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.all(16),
             children: [
               Text(
-                '食事ログから相談',
+                _t('食事ログから相談'),
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
               ),
               const SizedBox(height: 8),
               Text(
-                '今日の摂取量や直近の食事をもとに、次の食事を相談できます。',
+                _t('今日の摂取量や直近の食事をもとに、次の食事を相談できます。'),
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
@@ -660,7 +685,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     _isConsultVoiceEnabled ? Icons.volume_up : Icons.volume_off,
                     size: 18,
                   ),
-                  label: Text(_isConsultVoiceEnabled ? '音声ON' : '音声OFF'),
+                  label: Text(
+                    _isConsultVoiceEnabled ? _t('音声ON') : _t('音声OFF'),
+                  ),
                   selected: _isConsultVoiceEnabled,
                   onSelected: (enabled) async {
                     setState(() => _isConsultVoiceEnabled = enabled);
@@ -675,34 +702,50 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   ActionChip(
                     avatar: const Icon(Icons.restaurant_menu, size: 18),
-                    label: const Text('次の食事を提案'),
-                    onPressed: _isConsulting
-                        ? null
-                        : () => _sendConsultMessage(_nextMealSuggestionPrompt),
-                  ),
-                  ActionChip(
-                    avatar: const Icon(Icons.balance, size: 18),
-                    label: const Text('今日の不足を確認'),
+                    label: Text(_t('次の食事を提案')),
                     onPressed: _isConsulting
                         ? null
                         : () => _sendConsultMessage(
-                            '今日の食事ログから不足していそうな栄養と、次に補うなら何がよいか教えて',
+                            _consultPrompt(
+                              _nextMealSuggestionPrompt,
+                              'Suggest my next meal',
+                            ),
+                          ),
+                  ),
+                  ActionChip(
+                    avatar: const Icon(Icons.balance, size: 18),
+                    label: Text(_t('今日の不足を確認')),
+                    onPressed: _isConsulting
+                        ? null
+                        : () => _sendConsultMessage(
+                            _consultPrompt(
+                              '今日の食事ログから不足していそうな栄養と、次に補うなら何がよいか教えて',
+                              'Based on today\'s meal log, what nutrients may be missing and what should I add next?',
+                            ),
                           ),
                   ),
                   ActionChip(
                     avatar: const Icon(Icons.stacked_bar_chart, size: 18),
-                    label: const Text('PFCを整えたい'),
-                    onPressed: _isConsulting
-                        ? null
-                        : () => _sendConsultMessage('PFCバランスを整える次の食事を提案して'),
-                  ),
-                  ActionChip(
-                    avatar: const Icon(Icons.light_mode, size: 18),
-                    label: const Text('軽めにしたい'),
+                    label: Text(_t('PFCを整えたい')),
                     onPressed: _isConsulting
                         ? null
                         : () => _sendConsultMessage(
-                            '次の食事は軽めにしたい。食事ログを見ておすすめを提案して',
+                            _consultPrompt(
+                              'PFCバランスを整える次の食事を提案して',
+                              'Suggest a next meal that balances protein, fat, and carbs.',
+                            ),
+                          ),
+                  ),
+                  ActionChip(
+                    avatar: const Icon(Icons.light_mode, size: 18),
+                    label: Text(_t('軽めにしたい')),
+                    onPressed: _isConsulting
+                        ? null
+                        : () => _sendConsultMessage(
+                            _consultPrompt(
+                              '次の食事は軽めにしたい。食事ログを見ておすすめを提案して',
+                              'I want a lighter next meal. Please suggest one based on my meal log.',
+                            ),
                           ),
                   ),
                 ],
@@ -716,7 +759,7 @@ class _HomeScreenState extends State<HomeScreen> {
               if (dailyOverview.meals.isEmpty) ...[
                 const SizedBox(height: 12),
                 Text(
-                  '食事ログが増えるほど、提案は具体的になります。',
+                  _t('食事ログが増えるほど、提案は具体的になります。'),
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -739,9 +782,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     maxLines: 3,
                     textInputAction: TextInputAction.send,
                     onSubmitted: _isConsulting ? null : _sendConsultMessage,
-                    decoration: const InputDecoration(
-                      hintText: '例: コンビニで買える夕食を提案して',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      hintText: _t('例: コンビニで買える夕食を提案して'),
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                 ),
@@ -751,7 +794,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ? null
                       : () => _sendConsultMessage(_consultController.text),
                   icon: const Icon(Icons.send),
-                  tooltip: '送信',
+                  tooltip: _t('送信'),
                 ),
               ],
             ),
@@ -780,7 +823,7 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              message.text,
+              _t(message.text),
               style: TextStyle(
                 color: isUser
                     ? colorScheme.onPrimaryContainer
@@ -794,7 +837,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: IconButton(
                   visualDensity: VisualDensity.compact,
                   icon: const Icon(Icons.volume_up, size: 18),
-                  tooltip: '読み上げ',
+                  tooltip: _t('読み上げ'),
                   onPressed: () => _speakConsultText(message.text),
                 ),
               ),
@@ -839,10 +882,11 @@ class _HomeScreenState extends State<HomeScreen> {
       final response = await _gemmaService.consultMeal(
         mealLogContext: _buildMealLogContext(),
         userMessage: prompt,
+        responseLanguage: _isJapanese ? 'ja' : 'en',
       );
       if (!mounted) return;
       final replyText = response.trim().isEmpty
-          ? '提案を生成できませんでした。'
+          ? _t('提案を生成できませんでした。')
           : response.trim();
       setState(() {
         _consultMessages = [
@@ -893,8 +937,9 @@ class _HomeScreenState extends State<HomeScreen> {
       'profile': profile.toJson(),
       'today': {'mealCount': todayMeals.length, 'totals': todayTotals.toJson()},
       'recentMeals': recentMeals,
-      'instruction':
-          '次の食事提案では、今日の摂取量、直近の食事、PFCバランスを考慮してください。一般的な食事提案として、メニュー案、理由、調整ポイントを簡潔に返してください。',
+      'instruction': _isJapanese
+          ? '次の食事提案では、今日の摂取量、直近の食事、PFCバランスを考慮してください。一般的な食事提案として、メニュー案、理由、調整ポイントを簡潔に返してください。'
+          : 'For next-meal suggestions, consider today\'s intake, recent meals, and PFC balance. Reply concisely with menu ideas, reasons, and adjustment points as general food guidance.',
     });
   }
 
@@ -912,14 +957,37 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: SwitchListTile(
               secondary: const Icon(Icons.dark_mode),
-              title: const Text('ダークモード'),
-              subtitle: const Text('黒ベースのUIテーマに切り替えます'),
+              title: Text(_t('ダークモード')),
+              subtitle: Text(_t('黒ベースのUIテーマに切り替えます')),
               value: isDark,
               onChanged: (enabled) {
                 widget.onThemeModeChanged(
                   enabled ? ThemeMode.dark : ThemeMode.light,
                 );
               },
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: ListTile(
+              leading: const Icon(Icons.language),
+              title: Text(_t('言語')),
+              subtitle: Text(_t('端末設定に従います')),
+              trailing: DropdownButton<String>(
+                value: widget.languageCode,
+                items: [
+                  DropdownMenuItem(value: 'system', child: Text(_t('システム設定'))),
+                  DropdownMenuItem(value: 'ja', child: Text(_t('日本語'))),
+                  const DropdownMenuItem(value: 'en', child: Text('English')),
+                ],
+                onChanged: (value) async {
+                  if (value == null) return;
+                  await widget.onLanguageCodeChanged(value);
+                },
+              ),
             ),
           ),
         ),
@@ -936,13 +1004,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        '読み上げ音声',
+                        _t('読み上げ音声'),
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),
                     IconButton(
                       icon: const Icon(Icons.refresh),
-                      tooltip: '音声一覧を更新',
+                      tooltip: _t('音声一覧を更新'),
                       onPressed: _isLoadingTtsVoices ? null : _loadTtsVoices,
                     ),
                   ],
@@ -957,9 +1025,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       border: OutlineInputBorder(),
                     ),
                     items: [
-                      const DropdownMenuItem<String?>(
+                      DropdownMenuItem<String?>(
                         value: null,
-                        child: Text('端末のデフォルト音声'),
+                        child: Text(_t('端末のデフォルト音声')),
                       ),
                       ..._ttsVoices.map(
                         (voice) => DropdownMenuItem<String?>(
@@ -978,8 +1046,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 8),
                 Text(
                   _ttsVoices.isEmpty
-                      ? '端末に追加の日本語音声が見つからない場合は、Androidの音声合成設定から追加できます。'
-                      : '通信が必要な音声は表示せず、端末内で使える日本語音声だけを表示します。性別情報は端末側で標準化されていません。',
+                      ? _t('端末に追加の日本語音声が見つからない場合は、Androidの音声合成設定から追加できます。')
+                      : _t(
+                          '通信が必要な音声は表示せず、端末内で使える日本語音声だけを表示します。性別情報は端末側で標準化されていません。',
+                        ),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -989,9 +1059,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   alignment: Alignment.centerRight,
                   child: OutlinedButton.icon(
                     onPressed: () =>
-                        _speakConsultText('こんにちは。Gemma Biteの読み上げ音声テストです。'),
+                        _speakConsultText(_t('こんにちは。Gemma Biteの読み上げ音声テストです。')),
                     icon: const Icon(Icons.volume_up, size: 18),
-                    label: const Text('試聴'),
+                    label: Text(_t('試聴')),
                   ),
                 ),
               ],
@@ -1035,29 +1105,26 @@ class _HomeScreenState extends State<HomeScreen> {
                     const Center(child: CircularProgressIndicator()),
                     const SizedBox(height: 20),
                     Text(
-                      isSearching ? 'モデルを確認しています' : 'モデルを読み込んでいます',
+                      isSearching ? _t('モデルを確認しています') : _t('モデルを読み込んでいます'),
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      '初回読み込みには時間がかかります。',
-                      textAlign: TextAlign.center,
-                    ),
+                    Text(_t('初回読み込みには時間がかかります。'), textAlign: TextAlign.center),
                   ] else if (_availableModels.isEmpty) ...[
                     Text(
-                      'モデルファイルが見つかりません',
+                      _t('モデルファイルが見つかりません'),
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 12),
-                    const Text(
-                      'モデルファイル (.litertlm) を配置してください:',
+                    Text(
+                      _t('モデルファイル (.litertlm) を配置してください:'),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
                     SelectableText(
-                      _modelDirectory ?? '読み込み中...',
+                      _modelDirectory ?? _t('読み込み中...'),
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontSize: 12,
@@ -1068,11 +1135,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     OutlinedButton.icon(
                       onPressed: _loadModelInfo,
                       icon: const Icon(Icons.refresh, size: 18),
-                      label: const Text('モデルを再検索'),
+                      label: Text(_t('モデルを再検索')),
                     ),
                   ] else ...[
                     Text(
-                      '読み込むモデルを選択してください',
+                      _t('読み込むモデルを選択してください'),
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
@@ -1117,8 +1184,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     return _DailyOverview(
-      mealTitle: usesYesterday ? '昨日の食事の記録' : '今日の食事の記録',
-      intakeTitle: usesYesterday ? '昨日の摂取量' : '今日の摂取量',
+      mealTitle: usesYesterday ? _t('昨日の食事の記録') : _t('今日の食事の記録'),
+      intakeTitle: usesYesterday ? _t('昨日の摂取量') : _t('今日の摂取量'),
       meals: meals,
       totals: totals,
     );
@@ -1176,55 +1243,55 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 8),
             _summaryValueRow(
-              label: '写真登録数',
-              valueText: '${overview.meals.length}枚',
+              label: _t('写真登録数'),
+              valueText: _formatPhotoCount(overview.meals.length),
               icon: Icons.photo_camera,
               color: Colors.blue[600]!,
             ),
             _summaryRow(
-              label: '総カロリー',
+              label: _t('総カロリー'),
               value: overview.totals.caloriesKcal,
               unit: 'kcal',
               icon: Icons.bolt,
               color: Colors.amber[700]!,
             ),
             _summaryRow(
-              label: 'タンパク質',
+              label: _t('タンパク質'),
               value: overview.totals.proteinG,
               unit: 'g',
               icon: Icons.fitness_center,
               color: Colors.green[700]!,
             ),
             _summaryRow(
-              label: '脂質',
+              label: _t('脂質'),
               value: overview.totals.fatG,
               unit: 'g',
               icon: Icons.water_drop,
               color: Colors.teal[700]!,
             ),
             _summaryRow(
-              label: '炭水化物',
+              label: _t('炭水化物'),
               value: overview.totals.carbohydrateG,
               unit: 'g',
               icon: Icons.rice_bowl,
               color: Colors.lightGreen[700]!,
             ),
             _summaryRow(
-              label: '塩分',
+              label: _t('塩分'),
               value: overview.totals.saltG,
               unit: 'g',
               icon: Icons.grain,
               color: Colors.blueGrey[600]!,
             ),
             _summaryRow(
-              label: 'カフェイン',
+              label: _t('カフェイン'),
               value: overview.totals.caffeineMg,
               unit: 'mg',
               icon: Icons.coffee,
               color: Colors.brown[600]!,
             ),
             _summaryRow(
-              label: 'アルコール',
+              label: _t('アルコール'),
               value: overview.totals.alcoholG,
               unit: 'g',
               icon: Icons.local_bar,
@@ -1253,7 +1320,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        '過去7日間',
+                        _t('過去7日間'),
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),
@@ -1266,21 +1333,21 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 8),
               _summaryValueRow(
-                label: '摂取カロリーの1日平均',
+                label: _t('摂取カロリーの1日平均'),
                 valueText: '${overview.averageCaloriesKcal.round()}kcal',
                 icon: Icons.timeline,
                 color: Colors.orange[700]!,
               ),
               _summaryValueRow(
-                label: '写真投稿数',
-                valueText: '${overview.photoCount}枚',
+                label: _t('写真投稿数'),
+                valueText: _formatPhotoCount(overview.photoCount),
                 icon: Icons.photo_library,
                 color: Colors.blue[600]!,
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
                 child: Text(
-                  '各日の摂取カロリー',
+                  _t('各日の摂取カロリー'),
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
               ),
@@ -1385,13 +1452,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: Text(
                           pendingImages.length == 1
-                              ? '食事時刻: ${_formatDateTime(pendingImages.first.eatenAt)}'
-                              : '${pendingImages.length}枚を選択中',
+                              ? '${AppStrings.of(context).isJapanese ? '食事時刻' : 'Meal time'}: ${_formatDateTime(pendingImages.first.eatenAt)}'
+                              : AppStrings.of(context).isJapanese
+                              ? '${pendingImages.length}枚を選択中'
+                              : '${pendingImages.length} photos selected',
                         ),
                       ),
                       if (pendingImages.length > 1)
                         Text(
-                          '先頭: ${_formatDateTime(pendingImages.first.eatenAt)}',
+                          '${AppStrings.of(context).isJapanese ? '先頭' : 'First'}: ${_formatDateTime(pendingImages.first.eatenAt)}',
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: colorScheme.onSurfaceVariant),
                         ),
@@ -1437,7 +1506,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '食事の写真を撮影・選択してください',
+                      _t('食事の写真を撮影・選択してください'),
                       style: TextStyle(color: colorScheme.onSurfaceVariant),
                     ),
                   ],
@@ -1456,7 +1525,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ? null
                 : () => _pickImage(ImageSource.camera),
             icon: const Icon(Icons.camera_alt, size: 18),
-            label: const Text('撮影'),
+            label: Text(_t('撮影')),
           ),
         ),
         const SizedBox(width: 8),
@@ -1466,7 +1535,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ? null
                 : () => _pickImage(ImageSource.gallery),
             icon: const Icon(Icons.photo_library, size: 18),
-            label: const Text('選択'),
+            label: Text(_t('選択')),
           ),
         ),
         const SizedBox(width: 8),
@@ -1479,7 +1548,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ? _analyzeFood
                 : null,
             icon: const Icon(Icons.analytics, size: 18),
-            label: const Text('分析'),
+            label: Text(_t('分析')),
           ),
         ),
       ],
@@ -1488,8 +1557,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildLoadingIndicator() {
     final progressText = _analyzeTotalCount <= 1
-        ? 'Gemma が食事を分析中...'
-        : 'Gemma が食事を分析中... $_analyzeCompletedCount / $_analyzeTotalCount';
+        ? (AppStrings.of(context).isJapanese
+              ? 'Gemma が食事を分析中...'
+              : 'Gemma is analyzing meals...')
+        : (AppStrings.of(context).isJapanese
+              ? 'Gemma が食事を分析中... $_analyzeCompletedCount / $_analyzeTotalCount'
+              : 'Gemma is analyzing meals... $_analyzeCompletedCount / $_analyzeTotalCount');
     final progressValue = _analyzeTotalCount == 0
         ? null
         : _analyzeCompletedCount / _analyzeTotalCount;
@@ -1509,8 +1582,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildInferenceStatusCard() {
     final modelPath = _activeModelPath;
-    final modelName = modelPath == null ? '未選択' : _displayModelName(modelPath);
-    const modeLabel = '投機デコードON';
+    final modelName = modelPath == null
+        ? _t('未選択')
+        : _displayModelName(modelPath);
+    final modeLabel = _t('投機デコードON');
     final latency = _lastAnalyzeLatencyMs;
 
     return Card(
@@ -1522,16 +1597,28 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Chip(
               avatar: const Icon(Icons.memory, size: 18),
-              label: Text('モデル: $modelName'),
+              label: Text(
+                AppStrings.of(context).isJapanese
+                    ? 'モデル: $modelName'
+                    : 'Model: $modelName',
+              ),
             ),
             Chip(
               avatar: const Icon(Icons.speed, size: 18),
-              label: Text('デコード: $modeLabel'),
+              label: Text(
+                AppStrings.of(context).isJapanese
+                    ? 'デコード: $modeLabel'
+                    : 'Decode: $modeLabel',
+              ),
             ),
             if (latency != null)
               Chip(
                 avatar: const Icon(Icons.timer, size: 18),
-                label: Text('直近分析: ${(latency / 1000).toStringAsFixed(2)}秒'),
+                label: Text(
+                  AppStrings.of(context).isJapanese
+                      ? '直近分析: ${(latency / 1000).toStringAsFixed(2)}秒'
+                      : 'Last analysis: ${(latency / 1000).toStringAsFixed(2)}s',
+                ),
               ),
           ],
         ),
@@ -1549,9 +1636,9 @@ class _HomeScreenState extends State<HomeScreen> {
             Text(title, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             if (meals.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Center(child: Text('まだ食事記録がありません')),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Center(child: Text(_t('まだ食事記録がありません'))),
               )
             else
               ...meals.map((meal) {
@@ -1664,12 +1751,19 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _formatDateTime(DateTime? dateTime) {
-    if (dateTime == null) return '未取得';
+    if (dateTime == null) return _t('未取得');
     String two(int value) => value.toString().padLeft(2, '0');
     return '${dateTime.year}/${two(dateTime.month)}/${two(dateTime.day)} ${two(dateTime.hour)}:${two(dateTime.minute)}';
   }
 
+  String _formatPhotoCount(int count) {
+    return AppStrings.of(context).isJapanese ? '$count枚' : '$count photos';
+  }
+
   String _formatDayLabel(DateTime dateTime) {
+    if (!AppStrings.of(context).isJapanese) {
+      return '${dateTime.month}/${dateTime.day}';
+    }
     const weekdays = ['月', '火', '水', '木', '金', '土', '日'];
     final weekday = weekdays[dateTime.weekday - 1];
     return '${dateTime.month}/${dateTime.day} ($weekday)';
@@ -1721,6 +1815,14 @@ class _EatLogContent extends StatefulWidget {
 class _EatLogContentState extends State<_EatLogContent> {
   _EatLogMetric _metric = _EatLogMetric.calories;
 
+  String _t(String ja) => AppStrings.of(context).t(ja);
+
+  String _metricLabel(_EatLogMetric metric) => _t(metric.label);
+
+  String _formatPhotoCount(int count) {
+    return AppStrings.of(context).isJapanese ? '$count枚' : '$count photos';
+  }
+
   @override
   Widget build(BuildContext context) {
     final chronologicalDays = widget.overview.days.reversed.toList();
@@ -1740,7 +1842,7 @@ class _EatLogContentState extends State<_EatLogContent> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            '過去7日間',
+            _t('過去7日間'),
             style: Theme.of(
               context,
             ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
@@ -1764,14 +1866,16 @@ class _EatLogContentState extends State<_EatLogContent> {
                   const SizedBox(height: 16),
                   Text(
                     _metric == _EatLogMetric.pfcBalance
-                        ? 'PFCバランスの推移'
-                        : '${_metric.label}の推移',
+                        ? _t('PFCバランスの推移')
+                        : AppStrings.of(context).isJapanese
+                        ? '${_metricLabel(_metric)}の推移'
+                        : '${_metricLabel(_metric)} Trend',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   if (_metric == _EatLogMetric.pfcBalance) ...[
                     const SizedBox(height: 4),
                     Text(
-                      'P/F/Cの摂取エネルギー比',
+                      _t('P/F/Cの摂取エネルギー比'),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -1828,14 +1932,14 @@ class _EatLogContentState extends State<_EatLogContent> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
-                      '写真投稿数',
+                      _t('写真投稿数'),
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                   ),
                   const SizedBox(height: 8),
                   _eatLogValueRow(
-                    label: '過去7日間',
-                    valueText: '${widget.overview.photoCount}枚',
+                    label: _t('過去7日間'),
+                    valueText: _formatPhotoCount(widget.overview.photoCount),
                     icon: Icons.photo_library,
                     color: Colors.blue[600]!,
                     showDivider: false,
@@ -1861,7 +1965,7 @@ class _EatLogContentState extends State<_EatLogContent> {
         children: [
           Expanded(
             child: _metricTotal(
-              label: '合計',
+              label: _t('合計'),
               value: _formatMetricValue(total),
               icon: Icons.functions,
             ),
@@ -1869,7 +1973,7 @@ class _EatLogContentState extends State<_EatLogContent> {
           const SizedBox(width: 12),
           Expanded(
             child: _metricTotal(
-              label: '一日の平均',
+              label: _t('一日の平均'),
               value: _formatMetricValue(average),
               icon: Icons.timeline,
             ),
@@ -1937,10 +2041,10 @@ class _EatLogContentState extends State<_EatLogContent> {
     return Wrap(
       spacing: 12,
       runSpacing: 8,
-      children: const [
-        _PfcLegendItem(label: 'P タンパク質', color: Colors.green),
-        _PfcLegendItem(label: 'F 脂質', color: Colors.teal),
-        _PfcLegendItem(label: 'C 炭水化物', color: Colors.lightGreen),
+      children: [
+        _PfcLegendItem(label: _t('P タンパク質'), color: Colors.green),
+        _PfcLegendItem(label: _t('F 脂質'), color: Colors.teal),
+        _PfcLegendItem(label: _t('C 炭水化物'), color: Colors.lightGreen),
       ],
     );
   }
@@ -2001,7 +2105,7 @@ class _EatLogContentState extends State<_EatLogContent> {
                 size: 18,
                 color: selected ? metric.color[900] : metric.color[700],
               ),
-              label: Text(metric.label),
+              label: Text(_metricLabel(metric)),
               onSelected: (_) => setState(() => _metric = metric),
             ),
           );
@@ -2051,12 +2155,17 @@ class _EatLogContentState extends State<_EatLogContent> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('イートログ', style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              AppStrings.of(context).t('イートログ'),
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 8),
             if (meals.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Center(child: Text('この期間の食事記録はありません')),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: Text(AppStrings.of(context).t('この期間の食事記録はありません')),
+                ),
               )
             else
               ...meals.map((meal) {
@@ -2124,10 +2233,13 @@ class _EatLogContentState extends State<_EatLogContent> {
     return '$formatted${_metric.unit}';
   }
 
-  static String _formatRange(List<_WeeklyDaySummary> days) {
+  String _formatRange(List<_WeeklyDaySummary> days) {
     if (days.isEmpty) return '';
     final start = days.first.day;
     final end = days.last.day;
+    if (!AppStrings.of(context).isJapanese) {
+      return '${start.month}/${start.day} - ${end.month}/${end.day}';
+    }
     return '${start.month}月${start.day}日〜${end.day}日';
   }
 
@@ -2501,8 +2613,9 @@ class _ProfileDialogState extends State<_ProfileDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppStrings.of(context);
     return AlertDialog(
-      title: const Text('身体情報を入力'),
+      title: Text(strings.t('身体情報を入力')),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2512,7 +2625,7 @@ class _ProfileDialogState extends State<_ProfileDialog> {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              decoration: const InputDecoration(labelText: '身長 cm'),
+              decoration: InputDecoration(labelText: strings.t('身長 cm')),
             ),
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -2524,7 +2637,7 @@ class _ProfileDialogState extends State<_ProfileDialog> {
                       decimal: true,
                     ),
                     inputFormatters: const [_TwoDecimalInputFormatter()],
-                    decoration: const InputDecoration(labelText: '体重 kg'),
+                    decoration: InputDecoration(labelText: strings.t('体重 kg')),
                   ),
                 ),
                 if (widget.initialProfile.weightHistory.length >= 2) ...[
@@ -2534,7 +2647,7 @@ class _ProfileDialogState extends State<_ProfileDialog> {
                       widget.initialProfile.weightHistory,
                     ),
                     icon: const Icon(Icons.show_chart),
-                    label: const Text('推移'),
+                    label: Text(strings.t('推移')),
                   ),
                 ],
               ],
@@ -2543,10 +2656,10 @@ class _ProfileDialogState extends State<_ProfileDialog> {
               controller: _birthDateController,
               readOnly: true,
               decoration: InputDecoration(
-                labelText: '生年月日',
+                labelText: strings.t('生年月日'),
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.calendar_today),
-                  tooltip: '生年月日を選択',
+                  tooltip: strings.t('生年月日を選択'),
                   onPressed: _pickBirthDate,
                 ),
               ),
@@ -2554,19 +2667,19 @@ class _ProfileDialogState extends State<_ProfileDialog> {
             ),
             DropdownButtonFormField<String>(
               initialValue: _gender,
-              decoration: const InputDecoration(labelText: '性別'),
-              items: const [
+              decoration: InputDecoration(labelText: strings.t('性別')),
+              items: [
                 DropdownMenuItem(
                   value: UserProfile.genderMale,
-                  child: Text('男'),
+                  child: Text(strings.t('男')),
                 ),
                 DropdownMenuItem(
                   value: UserProfile.genderFemale,
-                  child: Text('女'),
+                  child: Text(strings.t('女')),
                 ),
                 DropdownMenuItem(
                   value: UserProfile.genderNoAnswer,
-                  child: Text('無回答'),
+                  child: Text(strings.t('無回答')),
                 ),
               ],
               onChanged: (value) {
@@ -2578,7 +2691,7 @@ class _ProfileDialogState extends State<_ProfileDialog> {
               controller: _notesController,
               minLines: 2,
               maxLines: 4,
-              decoration: const InputDecoration(labelText: '特記事項'),
+              decoration: InputDecoration(labelText: strings.t('特記事項')),
             ),
           ],
         ),
@@ -2586,9 +2699,9 @@ class _ProfileDialogState extends State<_ProfileDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('あとで'),
+          child: Text(strings.t('あとで')),
         ),
-        FilledButton(onPressed: _save, child: const Text('保存')),
+        FilledButton(onPressed: _save, child: Text(strings.t('保存'))),
       ],
     );
   }
@@ -2629,9 +2742,10 @@ class WeightHistoryScreen extends StatelessWidget {
     final sortedEntries = List<WeightEntry>.of(entries)
       ..sort((a, b) => a.enteredAt.compareTo(b.enteredAt));
     final latest = sortedEntries.last;
+    final strings = AppStrings.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('体重の推移')),
+      appBar: AppBar(title: Text(strings.t('体重の推移'))),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -2649,7 +2763,9 @@ class WeightHistoryScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '最新: ${_formatDateTime(latest.enteredAt)}',
+                    strings.isJapanese
+                        ? '最新: ${_formatDateTime(latest.enteredAt)}'
+                        : 'Latest: ${_formatDateTime(latest.enteredAt)}',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
@@ -2675,7 +2791,7 @@ class WeightHistoryScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            '入力履歴',
+            strings.t('入力履歴'),
             style: Theme.of(
               context,
             ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
@@ -3047,13 +3163,14 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
+        final strings = AppStrings.of(context);
         return AlertDialog(
-          title: const Text('この食事を削除しますか？'),
-          content: const Text('削除すると、食事ログと栄養集計からこの記録が取り除かれます。'),
+          title: Text(strings.t('この食事を削除しますか？')),
+          content: Text(strings.t('削除すると、食事ログと栄養集計からこの記録が取り除かれます。')),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('キャンセル'),
+              child: Text(strings.t('キャンセル')),
             ),
             FilledButton(
               style: FilledButton.styleFrom(
@@ -3061,7 +3178,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                 foregroundColor: Theme.of(context).colorScheme.onError,
               ),
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('削除'),
+              child: Text(strings.t('削除')),
             ),
           ],
         );
@@ -3072,14 +3189,16 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
     await widget.onMealDeleted(_meal);
     if (!mounted) return;
     navigator.pop();
-    messenger.showSnackBar(const SnackBar(content: Text('食事を削除しました。')));
+    messenger.showSnackBar(
+      SnackBar(content: Text(AppStrings.of(context).t('食事を削除しました。'))),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('食事詳細'),
+        title: Text(AppStrings.of(context).t('食事詳細')),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
       body: SingleChildScrollView(
@@ -3111,7 +3230,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
               runSpacing: 8,
               children: [
                 _metricChip(
-                  '総カロリー',
+                  AppStrings.of(context).t('総カロリー'),
                   meal.nutrition.caloriesKcal,
                   'kcal',
                   Icons.bolt,
@@ -3129,15 +3248,20 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                   'g',
                   Icons.rice_bowl,
                 ),
-                _metricChip('塩分', meal.nutrition.saltG, 'g', Icons.grain),
                 _metricChip(
-                  'カフェイン',
+                  AppStrings.of(context).t('塩分'),
+                  meal.nutrition.saltG,
+                  'g',
+                  Icons.grain,
+                ),
+                _metricChip(
+                  AppStrings.of(context).t('カフェイン'),
                   meal.nutrition.caffeineMg,
                   'mg',
                   Icons.coffee,
                 ),
                 _metricChip(
-                  'アルコール',
+                  AppStrings.of(context).t('アルコール'),
                   meal.nutrition.alcoholG,
                   'g',
                   Icons.local_bar,
@@ -3147,9 +3271,16 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
             const SizedBox(height: 12),
             LinearProgressIndicator(value: meal.confidence),
             const SizedBox(height: 6),
-            Text('推定の確信度 ${(meal.confidence * 100).round()}%'),
+            Text(
+              AppStrings.of(context).isJapanese
+                  ? '推定の確信度 ${(meal.confidence * 100).round()}%'
+                  : 'Confidence ${(meal.confidence * 100).round()}%',
+            ),
             const Divider(height: 28),
-            Text('Gemmaとの確認', style: Theme.of(context).textTheme.titleSmall),
+            Text(
+              AppStrings.of(context).t('Gemmaとの確認'),
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
             const SizedBox(height: 8),
             ...meal.messages.map(_buildMessageBubble),
             if (_isRefining) const LinearProgressIndicator(),
@@ -3169,14 +3300,14 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
               children: [
                 ActionChip(
                   avatar: const Icon(Icons.photo_library, size: 18),
-                  label: const Text('成分表画像を選択'),
+                  label: Text(AppStrings.of(context).t('成分表画像を選択')),
                   onPressed: _isRefining
                       ? null
                       : () => _pickReferenceImage(ImageSource.gallery),
                 ),
                 ActionChip(
                   avatar: const Icon(Icons.photo_camera, size: 18),
-                  label: const Text('撮影して添付'),
+                  label: Text(AppStrings.of(context).t('撮影して添付')),
                   onPressed: _isRefining
                       ? null
                       : () => _pickReferenceImage(ImageSource.camera),
@@ -3184,7 +3315,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                 if (_referenceImage != null)
                   ActionChip(
                     avatar: const Icon(Icons.close, size: 18),
-                    label: const Text('添付を外す'),
+                    label: Text(AppStrings.of(context).t('添付を外す')),
                     onPressed: _isRefining
                         ? null
                         : () => setState(() => _referenceImage = null),
@@ -3199,9 +3330,11 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                     controller: _chatController,
                     minLines: 1,
                     maxLines: 3,
-                    decoration: const InputDecoration(
-                      hintText: '例: ご飯は小盛り、味噌汁あり（画像添付のみでも可）',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      hintText: AppStrings.of(
+                        context,
+                      ).t('例: ご飯は小盛り、味噌汁あり（画像添付のみでも可）'),
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                 ),
@@ -3209,7 +3342,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                 IconButton.filled(
                   onPressed: _isRefining ? null : _sendClarification,
                   icon: const Icon(Icons.send),
-                  tooltip: '送信',
+                  tooltip: AppStrings.of(context).t('送信'),
                 ),
               ],
             ),
@@ -3222,7 +3355,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                 ),
                 onPressed: _isRefining ? null : _confirmDeleteMeal,
                 icon: const Icon(Icons.delete_outline),
-                label: const Text('この食事を削除'),
+                label: Text(AppStrings.of(context).t('この食事を削除')),
               ),
             ),
           ],

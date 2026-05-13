@@ -83,10 +83,12 @@ class GemmaService {
   Future<String> consultMeal({
     required String mealLogContext,
     required String userMessage,
+    required String responseLanguage,
   }) async {
     final result = await _channel.invokeMethod<String>('consultMeal', {
       'mealLogContext': mealLogContext,
       'userMessage': userMessage,
+      'responseLanguage': responseLanguage,
     });
     return result ?? '';
   }

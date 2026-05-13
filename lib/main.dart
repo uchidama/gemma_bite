@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'l10n/app_strings.dart';
 import 'screens/home_screen.dart';
 import 'services/app_settings_repository.dart';
 
@@ -18,6 +20,7 @@ class _GemmaBiteAppState extends State<GemmaBiteApp> {
   final _settingsRepository = AppSettingsRepository();
   ThemeMode _themeMode = ThemeMode.light;
   String? _ttsVoiceName;
+  String _languageCode = 'system';
 
   @override
   void initState() {
@@ -31,6 +34,7 @@ class _GemmaBiteAppState extends State<GemmaBiteApp> {
     setState(() {
       _themeMode = settings.themeMode;
       _ttsVoiceName = settings.ttsVoiceName;
+      _languageCode = settings.languageCode;
     });
   }
 
@@ -44,11 +48,28 @@ class _GemmaBiteAppState extends State<GemmaBiteApp> {
     await _settingsRepository.saveTtsVoiceName(ttsVoiceName);
   }
 
+  Future<void> _setLanguageCode(String languageCode) async {
+    setState(() => _languageCode = languageCode);
+    await _settingsRepository.saveLanguageCode(languageCode);
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Gemma Bite',
       themeMode: _themeMode,
+      locale: switch (_languageCode) {
+        'ja' => const Locale('ja'),
+        'en' => const Locale('en'),
+        _ => null,
+      },
+      supportedLocales: const [Locale('en'), Locale('ja')],
+      localizationsDelegates: const [
+        AppStrings.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
         useMaterial3: true,
@@ -67,6 +88,8 @@ class _GemmaBiteAppState extends State<GemmaBiteApp> {
         onThemeModeChanged: _setThemeMode,
         ttsVoiceName: _ttsVoiceName,
         onTtsVoiceNameChanged: _setTtsVoiceName,
+        languageCode: _languageCode,
+        onLanguageCodeChanged: _setLanguageCode,
       ),
     );
   }

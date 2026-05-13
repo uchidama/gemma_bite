@@ -5,23 +5,34 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 class AppSettings {
-  const AppSettings({this.themeMode = ThemeMode.light, this.ttsVoiceName});
+  const AppSettings({
+    this.themeMode = ThemeMode.light,
+    this.ttsVoiceName,
+    this.languageCode = 'system',
+  });
 
   final ThemeMode themeMode;
   final String? ttsVoiceName;
+  final String languageCode;
 
   Map<String, dynamic> toJson() {
     return {
       'themeMode': themeMode == ThemeMode.dark ? 'dark' : 'light',
       'ttsVoiceName': ttsVoiceName,
+      'languageCode': languageCode,
     };
   }
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
     final ttsVoiceName = json['ttsVoiceName'] as String?;
+    final languageCode = json['languageCode'] as String?;
     return AppSettings(
       themeMode: json['themeMode'] == 'dark' ? ThemeMode.dark : ThemeMode.light,
       ttsVoiceName: ttsVoiceName?.trim().isEmpty == true ? null : ttsVoiceName,
+      languageCode: switch (languageCode) {
+        'ja' || 'en' => languageCode!,
+        _ => 'system',
+      },
     );
   }
 }
@@ -64,14 +75,33 @@ class AppSettingsRepository {
   Future<void> saveThemeMode(ThemeMode themeMode) async {
     final settings = await load();
     await save(
-      AppSettings(themeMode: themeMode, ttsVoiceName: settings.ttsVoiceName),
+      AppSettings(
+        themeMode: themeMode,
+        ttsVoiceName: settings.ttsVoiceName,
+        languageCode: settings.languageCode,
+      ),
     );
   }
 
   Future<void> saveTtsVoiceName(String? ttsVoiceName) async {
     final settings = await load();
     await save(
-      AppSettings(themeMode: settings.themeMode, ttsVoiceName: ttsVoiceName),
+      AppSettings(
+        themeMode: settings.themeMode,
+        ttsVoiceName: ttsVoiceName,
+        languageCode: settings.languageCode,
+      ),
+    );
+  }
+
+  Future<void> saveLanguageCode(String languageCode) async {
+    final settings = await load();
+    await save(
+      AppSettings(
+        themeMode: settings.themeMode,
+        ttsVoiceName: settings.ttsVoiceName,
+        languageCode: languageCode,
+      ),
     );
   }
 }

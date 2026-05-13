@@ -246,6 +246,7 @@ class MainActivity : FlutterActivity() {
                     "consultMeal" -> {
                         val mealLogContext = call.argument<String>("mealLogContext")
                         val userMessage = call.argument<String>("userMessage")
+                        val responseLanguage = call.argument<String>("responseLanguage") ?: "ja"
                         if (mealLogContext == null || userMessage == null) {
                             result.error("INVALID_ARG", "mealLogContext and userMessage are required", null)
                             return@setMethodCallHandler
@@ -257,11 +258,18 @@ class MainActivity : FlutterActivity() {
 
                         scope.launch {
                             try {
+                                val isEnglish = responseLanguage == "en"
                                 val consultConfig = ConversationConfig(
                                     systemInstruction = Contents.of(
-                                        "あなたは食事ログをもとに、次の食事や栄養バランスを日本語で提案する管理栄養士風のAI相談役です。\n" +
-                                        "医療診断はせず、一般的な食事提案として答えてください。具体的なメニュー案、理由、調整ポイントを短く実用的に示します。\n" +
-                                        "回答はJSONではなく、読みやすい日本語の文章で返してください。"
+                                        if (isEnglish) {
+                                            "You are a friendly nutrition coach that suggests the next meal and helps balance nutrition from a meal log.\n" +
+                                            "Do not provide medical diagnosis. Answer as general food guidance with practical menu ideas, reasons, and adjustment points.\n" +
+                                            "Return readable English prose, not JSON."
+                                        } else {
+                                            "あなたは食事ログをもとに、次の食事や栄養バランスを日本語で提案する管理栄養士風のAI相談役です。\n" +
+                                            "医療診断はせず、一般的な食事提案として答えてください。具体的なメニュー案、理由、調整ポイントを短く実用的に示します。\n" +
+                                            "回答はJSONではなく、読みやすい日本語の文章で返してください。"
+                                        }
                                     ),
                                     samplerConfig = SamplerConfig(
                                         topK = 40,
@@ -273,7 +281,11 @@ class MainActivity : FlutterActivity() {
                                     conv.sendMessage(
                                         Contents.of(
                                             Content.Text(
-                                                "食事ログの要約:\n$mealLogContext\n\nユーザーの相談:\n$userMessage"
+                                                if (isEnglish) {
+                                                    "Meal log summary:\n$mealLogContext\n\nUser question:\n$userMessage"
+                                                } else {
+                                                    "食事ログの要約:\n$mealLogContext\n\nユーザーの相談:\n$userMessage"
+                                                }
                                             ),
                                         )
                                     )
