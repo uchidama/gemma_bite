@@ -1,177 +1,141 @@
-# gemma_bite
+# Gemma Bite
 
-A new Flutter project.
+Gemma Bite is an Android-first meal nutrition assistant powered by on-device Gemma 4. Take or select meal photos, let Gemma estimate nutrition, and ask for profile-aware meal advice without sending your meal data to a server.
 
-- 食事の写真を撮ることによってGemma4でカロリー、栄養素を推定。カロリーの取りすぎ、栄養の偏りなどに関するアドバイスをする
-- アルコール摂取量も推定する
-- Gemma4により、飛行機の機内などネットが通りにくいところでも使用できる
+Built as a Kaggle competition project, the app focuses on private, offline-friendly food logging for everyday meals, travel, and low-connectivity situations.
 
-## 対象プラットフォーム
+[Japanese README](README_JA.md)
 
-- iPhone
-- Android
+<p align="center">
+  <img src="docs/images/en/home.png" width="220" alt="Gemma Bite home screen">
+  <img src="docs/images/en/meal_detail.png" width="220" alt="Meal detail screen">
+  <img src="docs/images/en/ai_chat_result.png" width="220" alt="AI chat recommendation screen">
+</p>
+
+## Highlights
+
+- **On-device Gemma 4 meal analysis**: estimates calories, protein, fat, carbohydrates, salt, caffeine, and alcohol from meal photos.
+- **Batch photo analysis**: select multiple photos and process them as separate meal records.
+- **Duplicate prevention**: avoids registering the same meal photo multiple times.
+- **Profile-aware AI chat**: uses height, weight, gender, birthday, weight history, and notes such as allergies or food restrictions when suggesting the next meal.
+- **Meal log and trends**: records meals by photo timestamp and summarizes daily intake.
+- **Nutrition label refinement**: attach a nutrition label or reference image to improve an existing estimate.
+- **Read-aloud replies**: Android Text-to-Speech can read AI consultation responses using local device voices.
+- **English and Japanese UI**: follows the Android device language by default, with an in-app language setting.
+
+## Screenshots
+
+### English UI
+
+| Home | Analysis | Meal Detail |
+|---|---|---|
+| <img src="docs/images/en/home.png" width="240" alt="Home screen"> | <img src="docs/images/en/analize.png" width="240" alt="Meal analysis in progress"> | <img src="docs/images/en/meal_detail.png" width="240" alt="Meal detail"> |
+
+| Eat Log | Profile | Settings |
+|---|---|---|
+| <img src="docs/images/en/eat_log_top.png" width="240" alt="Eat log top"> | <img src="docs/images/en/profile.png" width="240" alt="Profile screen"> | <img src="docs/images/en/setting.png" width="240" alt="Settings screen"> |
+
+| AI Chat | AI Recommendation | Eat Log Summary |
+|---|---|---|
+| <img src="docs/images/en/ai_chat.png" width="240" alt="AI chat screen"> | <img src="docs/images/en/ai_chat_result.png" width="240" alt="AI chat result"> | <img src="docs/images/en/eat_log_bottom.png" width="240" alt="Eat log summary"> |
+
+Japanese UI screenshots are available in [README_JA.md](README_JA.md).
+
+## How It Works
+
+Gemma Bite combines a Flutter UI with a native Android Gemma inference layer.
+
+1. The user takes or selects one or more meal photos.
+2. Flutter sends the image path to Android through a platform channel.
+3. Android loads the Gemma 4 LiteRT-LM model and runs multimodal inference on device.
+4. The model returns structured JSON for the meal name, summary, nutrition values, confidence, and follow-up questions.
+5. The app stores meal records locally and uses them, together with the user profile, for AI consultation.
+
+```text
+Flutter UI
+  -> MethodChannel
+  -> Android Kotlin
+  -> LiteRT-LM Engine
+  -> Gemma 4 E2B model
+```
+
+## Tech Stack
+
+- Flutter / Dart
+- Android Kotlin platform channel
+- Google AI Edge LiteRT-LM
+- Gemma 4 E2B LiteRT-LM model
+- Android Text-to-Speech
+- ML Kit Japanese Text Recognition for nutrition label OCR
 
 ## Getting Started
 
-This project is a starting point for a Flutter application.
+### Prerequisites
 
-A few resources to get you started if this is your first Flutter project:
+- Flutter SDK
+- Android Studio or Android SDK command-line tools
+- Android device or emulator
+- `adb`
+- A Gemma 4 LiteRT-LM `.litertlm` model file
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+The Gemma model is not included in this repository. Download it separately and make sure you follow the model provider's license and access requirements.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+### Download the Model
 
+Gemma Bite is developed with the LiteRT-LM Gemma 4 E2B model:
 
-### 実装内容
+<https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm>
 
-| レイヤー | ファイル | 内容 |
-|---|---|---|
-| **Flutter UI** | main.dart | アプリエントリポイント |
-| | home_screen.dart | メイン画面（モデル管理・撮影・分析結果表示） |
-| | gemma_service.dart | Platform Channel ラッパー |
-| **Android** | android/app/.../MainActivity.kt | LiteRT-LM エンジン初期化・マルチモーダル推論 |
-| | build.gradle.kts | LiteRT-LM 依存関係追加、minSdk=26 |
-| | AndroidManifest.xml | カメラ権限、GPU ネイティブライブラリ |
-| **iOS** | Info.plist | カメラ・フォトライブラリ使用説明 |
-
-### モデルのダウンロード
-
-LiteRT-LM 用のモデル
-https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm
-
-```
-# ツールが入っていない場合はインストール
+```bash
 pip install huggingface_hub
-
-# ログイン（トークンが必要な場合があります）
 huggingface-cli login
-
-# モデルを丸ごとダウンロード
 huggingface-cli download litert-community/gemma-4-E2B-it-litert-lm --local-dir ./models/gemma-4-E2B-it-litert-lm
-
 ```
 
+### Place the Model on Android
 
-
-### Gemma 4 MTP（ドラフターモデル）について
-
-- 2026-05時点の LiteRT-LM Android ドキュメントでは、MTP は `ExperimentalFlags.enableSpeculativeDecoding = true` で有効化します。
-- Gemma 4 の LiteRT モデル（例: `gemma-4-E2B-it.litertlm`）をそのまま利用し、推論側の投機的デコードをONにする運用です。
-- 本アプリの Android 実装では、モデル初期化時に投機的デコードを有効化しています。
-- MTPの有無や配布状況は公式ドキュメントを参照してください: https://ai.google.dev/gemma/docs/mtp/overview
-
-
-
-### アプリの使い方
-
-1. **モデル配置**: Gemma-4-E2B の `.litertlm` ファイルを以下にadbで転送
-
-```
-# ディレクトリ作成
+```bash
 adb shell mkdir -p /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models
-
-# モデルファイルを転送（ダウンロードしたファイルのパスに合わせて調整）
-adb push ~/FlutterProjects/gemma_bite/models/gemma-4-E2B-it-litert-lm/gemma-4-E2B-it.litertlm /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models/
-
 adb push ./models/gemma-4-E2B-it-litert-lm/gemma-4-E2B-it.litertlm /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models/
+```
 
-# 旧キャッシュを削除（再最適化させる）
+If you need to force model re-optimization after changing the model file:
+
+```bash
 adb shell rm -f /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models/*.xnnpack_cache_*
 ```
 
-2. **モデル読み込み**: アプリ内でモデルファイルを選択して初期化
-3. **撮影/選択** → **分析** → Gemma 4 がオンデバイスで推論し、カロリー・栄養素・アルコール・アドバイスを表示
+### Run the App
 
-### 注意点
-- **iOS**: LiteRT-LM の Swift SDK が開発中のため、現時点では Android のみ LLM 機能が動作します
-- モデルファイル（約2.6GB）はアプリに同梱されず、手動配置が必要です
-- `SamplerConfig` の `topP`/`temperature` の型が `Double` か `Float` かは、実際のビルド時に調整が必要な可能性があります
-
-変更を行いました。
-
-### 実行
-
-```
+```bash
+flutter pub get
 flutter run
 ```
 
-```
-flutter devices
-flutter run -d 57060DLCQ000P3
-```
-
-#### インストールだけして apk を作りたい
-
-```
-flutter build apk
-flutter install -d 57060DLCQ000P3
-```
-
-# スクリーンショットを取得
-
-## 接続されているAndroid端末のスクリーンショットをローカルにとる
-
-```
-adb exec-out screencap -p > screenshot.png
-```
-
-```
-adb devices
-adb shell ls /sdcard/Pictures/Screenshots | tail
-```
-
-## スクリーンショットから最新の１枚を取得
-
-```
-latest=$(adb shell ls /sdcard/Pictures/Screenshots | tail -n 1 | tr -d '\r')
-adb pull "/sdcard/Pictures/Screenshots/$latest" .
-```
-
-# 仕様案
-
-## 主要な栄養素の集計
-
-### 黄金の「PFCバランス」（最優先）
-
-- タンパク質 (Protein)
-- 脂質 (Fat)
-- 炭水化物 (Carbohydrate)
-- 総カロリー
-- 塩分
-
-### 嗜好品系
-
-- カフェイン
-- アルコール
-
-## 食事の時系列の記録
-
-　写真の撮影時間から、どの時間の食事か取れるだろう。これを記録。一覧でみれる
-
-## 食事内容について、正確な情報がわからないときはGemmaから質問してくる。ユーザーが文言で答えてチャットでやりとりすることで情報は正確になる
-
-## １日の摂取カロリー、栄養が集計される
-
-## 現在の身長、体重を入力
-
-　アプリ起動時か？
-
-
-・Googleカレンダーとの連携。
-　持久力が求められる運動をする場合: 「明日は長距離を走る予定なら、もう少し炭水化物を多めに摂っておきましょう」といった助言。
-
-#### アイコン更新手順
-
-- `flutter run` ではランチャーアイコンは再生成されません。
-- 元画像を更新します。
-  - `assets/app_icon.png`
-  - `assets/app_icon_foreground.png`（Android adaptive icon 用）
-- アイコン生成コマンドを実行します。
+To run on a specific Android device:
 
 ```bash
-flutter pub run flutter_launcher_icons:main
+flutter devices
+flutter run -d <device-id>
 ```
+
+To build an APK:
+
+```bash
+flutter build apk
+```
+
+## Current Scope
+
+- Android is the main target for on-device Gemma inference.
+- The iOS project files exist, but the native Gemma inference path is not implemented for iOS.
+- Nutrition values are estimates and should not be treated as medical advice.
+- Android read-aloud voices depend on the local TTS voices installed on the device.
+- Network-required TTS voices are intentionally hidden so read-aloud can stay local/offline-friendly.
+
+## Repository Notes
+
+- English screenshots live in `docs/images/en/`.
+- Japanese screenshots live in `docs/images/ja/`.
+- Model files should stay outside the repository. The `models/` directory is ignored by Git.
+- Local screenshot captures matching `screenshot*.png` are ignored by Git.
