@@ -51,9 +51,13 @@ class GemmaService {
     _isInitialized = true;
   }
 
-  Future<String> analyzeFood(String imagePath) async {
+  Future<String> analyzeFood({
+    required String imagePath,
+    required String responseLanguage,
+  }) async {
     final result = await _channel.invokeMethod<String>('analyzeFood', {
       'imagePath': imagePath,
+      'responseLanguage': responseLanguage,
     });
     return result ?? '';
   }
@@ -70,12 +74,14 @@ class GemmaService {
     required String userAnswer,
     String? referenceImagePath,
     String? ocrText,
+    required String responseLanguage,
   }) async {
     final result = await _channel.invokeMethod<String>('refineMeal', {
       'currentMealJson': currentMealJson,
       'userAnswer': userAnswer,
       'referenceImagePath': referenceImagePath,
       'ocrText': ocrText,
+      'responseLanguage': responseLanguage,
     });
     return result ?? '';
   }

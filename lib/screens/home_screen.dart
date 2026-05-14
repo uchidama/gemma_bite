@@ -366,7 +366,8 @@ class _HomeScreenState extends State<HomeScreen> {
         }
 
         final response = await _gemmaService.analyzeFood(
-          pendingImage.file.path,
+          imagePath: pendingImage.file.path,
+          responseLanguage: _isJapanese ? 'ja' : 'en',
         );
         final meal = MealEntry.fromGemmaJson(
           imagePath: pendingImage.file.path,
@@ -3046,6 +3047,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
   }
 
   Future<void> _sendClarification() async {
+    final responseLanguage = AppStrings.of(context).isJapanese ? 'ja' : 'en';
     final answer = _chatController.text.trim();
     final referenceImage = _referenceImage;
     if (answer.isEmpty && referenceImage == null) return;
@@ -3115,6 +3117,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
         userAnswer: answer,
         referenceImagePath: referenceImage?.path,
         ocrText: ocrText,
+        responseLanguage: responseLanguage,
       );
       final refined = MealEntry.fromGemmaJson(
         imagePath: _meal.imagePath,

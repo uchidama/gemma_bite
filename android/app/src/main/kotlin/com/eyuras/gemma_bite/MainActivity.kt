@@ -146,6 +146,7 @@ class MainActivity : FlutterActivity() {
 
                     "analyzeFood" -> {
                         val imagePath = call.argument<String>("imagePath")
+                        val responseLanguage = call.argument<String>("responseLanguage") ?: "ja"
                         if (imagePath == null) {
                             result.error("INVALID_ARG", "imagePath is required", null)
                             return@setMethodCallHandler
@@ -157,12 +158,18 @@ class MainActivity : FlutterActivity() {
 
                         scope.launch {
                             try {
+                                val isEnglish = responseLanguage == "en"
+                                val languageInstruction = mealLanguageInstruction(isEnglish)
                                 val response = withFreshConversation { conv ->
                                     conv.sendMessage(
                                         Contents.of(
                                             Content.ImageFile(imagePath),
                                             Content.Text(
-                                                "この食事写真を分析し、指定スキーマの単一JSONオブジェクトだけを返してください。配列では返さないでください。見えない部分は推定し、不明点はquestionsに入れてください。"
+                                                if (isEnglish) {
+                                                    "Analyze this meal photo and return only one JSON object matching the schema. Do not return an array, explanation, or Markdown. Estimate hidden portions when needed. Put uncertainty in questions. $languageInstruction"
+                                                } else {
+                                                    "この食事写真を分析し、指定スキーマの単一JSONオブジェクトだけを返してください。配列では返さないでください。見えない部分は推定し、不明点はquestionsに入れてください。$languageInstruction"
+                                                }
                                             ),
                                         )
                                     )
@@ -199,6 +206,7 @@ class MainActivity : FlutterActivity() {
                         val userAnswer = call.argument<String>("userAnswer")
                         val referenceImagePath = call.argument<String>("referenceImagePath")
                         val ocrText = call.argument<String>("ocrText")
+                        val responseLanguage = call.argument<String>("responseLanguage") ?: "ja"
                         if (currentMealJson == null || userAnswer == null) {
                             result.error("INVALID_ARG", "currentMealJson and userAnswer are required", null)
                             return@setMethodCallHandler
@@ -210,15 +218,28 @@ class MainActivity : FlutterActivity() {
 
                         scope.launch {
                             try {
+                                val isEnglish = responseLanguage == "en"
+                                val languageInstruction = mealLanguageInstruction(isEnglish)
                                 val response = withFreshConversation { conv ->
                                     val userPrompt =
-                                        "現在の食事JSON: $currentMealJson\n" +
-                                        "ユーザーの回答: $userAnswer\n" +
-                                        if (ocrText.isNullOrBlank()) "" else "OCR抽出テキスト: $ocrText\n" +
-                                        if (referenceImagePath.isNullOrBlank()) {
-                                            "回答を反映して栄養値とsummaryとquestionsを更新し、同じスキーマのJSONだけを返してください。summaryには更新根拠を1-2文で含めてください。OCR抽出テキストがある場合はそちらを優先して数値を解釈してください。"
+                                        if (isEnglish) {
+                                            "Current meal JSON: $currentMealJson\n" +
+                                            "User answer: $userAnswer\n" +
+                                            if (ocrText.isNullOrBlank()) "" else "OCR text: $ocrText\n" +
+                                            if (referenceImagePath.isNullOrBlank()) {
+                                                "Update nutrition, summary, and questions based on the answer. Return only the same-schema JSON. Include the reason for the update in summary in 1-2 sentences. Prefer OCR text when interpreting numbers. $languageInstruction"
+                                            } else {
+                                                "An additional nutrition label or package photo is attached. Read text from the image and incorporate it. Update nutrition, summary, and questions, and return only the same-schema JSON. In summary, include key values read from the image or OCR text, such as energy, P/F/C, and salt, in 1-2 sentences. Prefer OCR text when interpreting numbers. $languageInstruction"
+                                            }
                                         } else {
-                                            "追加で成分表やパッケージ写真を渡します。画像の文字情報も読み取り、回答へ反映してください。回答を反映して栄養値とsummaryとquestionsを更新し、同じスキーマのJSONだけを返してください。summaryには、画像またはOCRテキストから読み取った主要な数値（例: エネルギー, P/F/C, 塩分）を日本語で1-2文に要約して必ず含めてください。OCR抽出テキストがある場合はそちらを優先して数値を解釈してください。"
+                                            "現在の食事JSON: $currentMealJson\n" +
+                                            "ユーザーの回答: $userAnswer\n" +
+                                            if (ocrText.isNullOrBlank()) "" else "OCR抽出テキスト: $ocrText\n" +
+                                            if (referenceImagePath.isNullOrBlank()) {
+                                                "回答を反映して栄養値とsummaryとquestionsを更新し、同じスキーマのJSONだけを返してください。summaryには更新根拠を1-2文で含めてください。OCR抽出テキストがある場合はそちらを優先して数値を解釈してください。$languageInstruction"
+                                            } else {
+                                                "追加で成分表やパッケージ写真を渡します。画像の文字情報も読み取り、回答へ反映してください。回答を反映して栄養値とsummaryとquestionsを更新し、同じスキーマのJSONだけを返してください。summaryには、画像またはOCRテキストから読み取った主要な数値（例: エネルギー, P/F/C, 塩分）を日本語で1-2文に要約して必ず含めてください。OCR抽出テキストがある場合はそちらを優先して数値を解釈してください。$languageInstruction"
+                                            }
                                         }
 
                                     val requestContents = if (referenceImagePath.isNullOrBlank()) {
@@ -346,6 +367,14 @@ class MainActivity : FlutterActivity() {
 
     private fun getModelDir(): File {
         return File(context.getExternalFilesDir(null), "models")
+    }
+
+    private fun mealLanguageInstruction(isEnglish: Boolean): String {
+        return if (isEnglish) {
+            "Use English for all user-facing string fields: foodName, summary, and every questions item. Do not use Japanese in those fields."
+        } else {
+            "foodName、summary、questionsの各項目は必ず自然な日本語で書いてください。これらの項目に英語を使わないでください。"
+        }
     }
 
     private fun listTtsVoices(languageCode: String, result: MethodChannel.Result) {
