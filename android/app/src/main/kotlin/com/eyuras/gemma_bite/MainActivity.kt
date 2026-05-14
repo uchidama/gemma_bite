@@ -300,17 +300,19 @@ class MainActivity : FlutterActivity() {
                     }
 
                     "listTtsVoices" -> {
-                        listTtsVoices(result)
+                        val languageCode = call.argument<String>("languageCode") ?: "ja"
+                        listTtsVoices(languageCode, result)
                     }
 
                     "speakText" -> {
                         val text = call.argument<String>("text")
                         val voiceName = call.argument<String>("voiceName")
+                        val languageCode = call.argument<String>("languageCode") ?: "ja"
                         if (text.isNullOrBlank()) {
                             result.success(false)
                             return@setMethodCallHandler
                         }
-                        speakText(text, voiceName, result)
+                        speakText(text, voiceName, languageCode, result)
                     }
 
                     "stopSpeaking" -> {
@@ -346,11 +348,12 @@ class MainActivity : FlutterActivity() {
         return File(context.getExternalFilesDir(null), "models")
     }
 
-    private fun listTtsVoices(result: MethodChannel.Result) {
+    private fun listTtsVoices(languageCode: String, result: MethodChannel.Result) {
+        val locale = ttsLocale(languageCode)
         ensureTextToSpeechReady(
             onReady = { tts ->
                 val voices = tts.voices
-                    ?.filter { it.locale.language == Locale.JAPANESE.language }
+                    ?.filter { it.locale.language == locale.language }
                     ?.filterNot { it.isNetworkConnectionRequired }
                     ?.sortedWith(compareBy({ it.isNetworkConnectionRequired }, { it.name }))
                     ?.map {
@@ -369,10 +372,16 @@ class MainActivity : FlutterActivity() {
         )
     }
 
-    private fun speakText(text: String, voiceName: String?, result: MethodChannel.Result) {
+    private fun speakText(
+        text: String,
+        voiceName: String?,
+        languageCode: String,
+        result: MethodChannel.Result
+    ) {
+        val locale = ttsLocale(languageCode)
         ensureTextToSpeechReady(
             onReady = { tts ->
-                applyTtsVoice(tts, voiceName)
+                applyTtsVoice(tts, voiceName, locale)
                 tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "consult_reply")
                 result.success(true)
             },
@@ -401,7 +410,7 @@ class MainActivity : FlutterActivity() {
                         return@post
                     }
 
-                    if (!applyTtsVoice(tts, null)) {
+                    if (!applyTtsVoice(tts, null, Locale.JAPANESE)) {
                         onError("TTS_LANG_ERROR", "日本語の音声読み上げに対応していません")
                         return@post
                     }
@@ -413,7 +422,7 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun applyTtsVoice(tts: TextToSpeech, voiceName: String?): Boolean {
+    private fun applyTtsVoice(tts: TextToSpeech, voiceName: String?, locale: Locale): Boolean {
         if (!voiceName.isNullOrBlank()) {
             val voice = tts.voices?.firstOrNull { it.name == voiceName }
             if (voice != null && tts.setVoice(voice) == TextToSpeech.SUCCESS) {
@@ -421,9 +430,13 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        val availability = tts.setLanguage(Locale.JAPANESE)
+        val availability = tts.setLanguage(locale)
         return availability != TextToSpeech.LANG_MISSING_DATA &&
             availability != TextToSpeech.LANG_NOT_SUPPORTED
+    }
+
+    private fun ttsLocale(languageCode: String): Locale {
+        return if (languageCode == "en") Locale.ENGLISH else Locale.JAPANESE
     }
 
     override fun onDestroy() {

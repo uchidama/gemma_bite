@@ -93,8 +93,10 @@ class GemmaService {
     return result ?? '';
   }
 
-  Future<List<TtsVoice>> listTtsVoices() async {
-    final voices = await _channel.invokeMethod<List<dynamic>>('listTtsVoices');
+  Future<List<TtsVoice>> listTtsVoices({required String languageCode}) async {
+    final voices = await _channel.invokeMethod<List<dynamic>>('listTtsVoices', {
+      'languageCode': languageCode,
+    });
     return (voices ?? const [])
         .whereType<Map<dynamic, dynamic>>()
         .map(TtsVoice.fromJson)
@@ -102,11 +104,16 @@ class GemmaService {
         .toList();
   }
 
-  Future<void> speakText(String text, {String? voiceName}) async {
+  Future<void> speakText(
+    String text, {
+    String? voiceName,
+    required String languageCode,
+  }) async {
     if (text.trim().isEmpty) return;
     await _channel.invokeMethod('speakText', {
       'text': text,
       'voiceName': voiceName,
+      'languageCode': languageCode,
     });
   }
 

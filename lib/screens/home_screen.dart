@@ -143,6 +143,24 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _consultPrompt(String ja, String en) => _isJapanese ? ja : en;
 
+  String get _voiceLanguageCode => _isJapanese ? 'ja' : 'en';
+
+  String? get _selectedTtsVoiceName {
+    final voiceName = widget.ttsVoiceName;
+    if (voiceName == null) return null;
+    return _ttsVoices.any((voice) => voice.name == voiceName)
+        ? voiceName
+        : null;
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.languageCode != widget.languageCode) {
+      _loadTtsVoices();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -244,7 +262,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadTtsVoices() async {
     if (mounted) setState(() => _isLoadingTtsVoices = true);
     try {
-      final voices = await _gemmaService.listTtsVoices();
+      final voices = await _gemmaService.listTtsVoices(
+        languageCode: _voiceLanguageCode,
+      );
       if (!mounted) return;
       setState(() {
         _ttsVoices = voices;
@@ -855,7 +875,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _speakConsultText(String text) async {
     try {
-      await _gemmaService.speakText(text, voiceName: widget.ttsVoiceName);
+      await _gemmaService.speakText(
+        text,
+        voiceName: _selectedTtsVoiceName,
+        languageCode: _voiceLanguageCode,
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -945,10 +969,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildSettingsTab() {
     final isDark = widget.themeMode == ThemeMode.dark;
-    final selectedVoiceName =
-        _ttsVoices.any((voice) => voice.name == widget.ttsVoiceName)
-        ? widget.ttsVoiceName
-        : null;
+    final selectedVoiceName = _selectedTtsVoiceName;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -1046,9 +1067,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 8),
                 Text(
                   _ttsVoices.isEmpty
-                      ? _t('端末に追加の日本語音声が見つからない場合は、Androidの音声合成設定から追加できます。')
+                      ? _t('端末に追加の音声が見つからない場合は、Androidの音声合成設定から追加できます。')
                       : _t(
-                          '通信が必要な音声は表示せず、端末内で使える日本語音声だけを表示します。性別情報は端末側で標準化されていません。',
+                          '通信が必要な音声は表示せず、現在の表示言語で端末内にある音声だけを表示します。性別情報は端末側で標準化されていません。',
                         ),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -1563,15 +1584,12 @@ class _HomeScreenState extends State<HomeScreen> {
         : (AppStrings.of(context).isJapanese
               ? 'Gemma が食事を分析中... $_analyzeCompletedCount / $_analyzeTotalCount'
               : 'Gemma is analyzing meals... $_analyzeCompletedCount / $_analyzeTotalCount');
-    final progressValue = _analyzeTotalCount == 0
-        ? null
-        : _analyzeCompletedCount / _analyzeTotalCount;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            CircularProgressIndicator(value: progressValue),
+            const CircularProgressIndicator(),
             const SizedBox(height: 12),
             Text(progressText),
           ],

@@ -51,8 +51,12 @@ class AppStrings {
     '端末のデフォルト音声': 'Device Default Voice',
     '端末に追加の日本語音声が見つからない場合は、Androidの音声合成設定から追加できます。':
         'If no additional Japanese voices are available, add them in Android text-to-speech settings.',
+    '端末に追加の音声が見つからない場合は、Androidの音声合成設定から追加できます。':
+        'If no additional voices are available, add them in Android text-to-speech settings.',
     '通信が必要な音声は表示せず、端末内で使える日本語音声だけを表示します。性別情報は端末側で標準化されていません。':
         'Only offline Japanese voices available on this device are shown. Gender labels are not standardized by Android.',
+    '通信が必要な音声は表示せず、現在の表示言語で端末内にある音声だけを表示します。性別情報は端末側で標準化されていません。':
+        'Only offline voices for the current app language are shown. Gender labels are not standardized by Android.',
     'こんにちは。Gemma Biteの読み上げ音声テストです。':
         'Hello. This is a Gemma Bite read-aloud voice test.',
     '試聴': 'Preview',
