@@ -143,7 +143,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _consultPrompt(String ja, String en) => _isJapanese ? ja : en;
 
-  String get _voiceLanguageCode => _isJapanese ? 'ja' : 'en';
+  String get _voiceLanguageCode {
+    return switch (widget.languageCode) {
+      'ja' => 'ja',
+      'en' => 'en',
+      _ => AppStrings.of(context).isJapanese ? 'ja' : 'en',
+    };
+  }
 
   String? get _selectedTtsVoiceName {
     final voiceName = widget.ttsVoiceName;
@@ -157,6 +163,10 @@ class _HomeScreenState extends State<HomeScreen> {
   void didUpdateWidget(covariant HomeScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.languageCode != widget.languageCode) {
+      setState(() {
+        _ttsVoices = [];
+        _isLoadingTtsVoices = true;
+      });
       _loadTtsVoices();
     }
   }
