@@ -90,9 +90,23 @@ huggingface-cli download litert-community/gemma-4-E2B-it-litert-lm --local-dir .
 
 ### Android 端末へのモデル配置
 
+モデルをpushする前に、アプリを一度インストールまたは起動して Android の
+app-owned な external files ディレクトリを作らせてください。`adb shell mkdir` で
+`models` ディレクトリを作ると、最近の Android では所有者が `shell` になり、
+アプリからモデルファイルを一覧できないことがあります。
+
 ```bash
-adb shell mkdir -p /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models
-adb push ./models/gemma-4-E2B-it-litert-lm/gemma-4-E2B-it.litertlm /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models/
+APP_ID=com.eyuras.gemma_bite
+MODEL_DIR="/storage/emulated/0/Android/data/$APP_ID/files/models"
+MODEL_PATH=./models/gemma-4-E2B-it-litert-lm/gemma-4-E2B-it.litertlm
+
+# インストール済みのアプリを一度起動します。アプリが $MODEL_DIR を作成し、
+# モデル配置までは "Model file not found" を表示します。
+adb shell am start -W -n "$APP_ID/.MainActivity"
+adb shell am force-stop "$APP_ID"
+
+adb push "$MODEL_PATH" "$MODEL_DIR/"
+adb shell ls -lh "$MODEL_DIR/"
 ```
 
 モデル変更後に再最適化したい場合:
@@ -120,6 +134,86 @@ APK をビルドする場合:
 ```bash
 flutter build apk
 ```
+
+## GitHub Release の Live デモ手順（Android APK）
+
+Android APK を GitHub Release で配布する場合でも、Gemma の `.litertlm` モデルファイル配置は必須です。
+APK だけでは推論を実行できません。
+
+Release 用 APK をビルドし、アップロード前にファイル名を変更します。
+
+```bash
+flutter build apk --release
+cp build/app/outputs/flutter-apk/app-release.apk gemma-bite-v1.0.0.apk
+shasum -a 256 gemma-bite-v1.0.0.apk > SHA256SUMS
+```
+
+現在の Android `release` ビルドは debug signing config で署名しています。そのため、この APK はデモや手動テスト向けであり、Play Store 配布向けではありません。
+
+### 1) 配布物を取得
+
+- GitHub Release から `gemma-bite-v1.0.0.apk` をダウンロード
+- Hugging Face から別途 `gemma-4-E2B-it.litertlm` を取得（ライセンス・利用条件に従ってください）
+  <https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm>
+
+Hugging Face CLI を使う場合:
+
+```bash
+pip install huggingface_hub
+huggingface-cli login
+huggingface-cli download litert-community/gemma-4-E2B-it-litert-lm --local-dir ./models/gemma-4-E2B-it-litert-lm
+```
+
+### 2) `adb` でAPKインストールとモデル配置
+
+```bash
+APP_ID=com.eyuras.gemma_bite
+APK_PATH=./gemma-bite-v1.0.0.apk
+MODEL_PATH=./models/gemma-4-E2B-it-litert-lm/gemma-4-E2B-it.litertlm
+
+adb install -r "$APK_PATH"
+
+# アプリを一度起動して、アプリ自身に Android/data 配下と models
+# サブディレクトリを作らせます。adb shell mkdir で作ると所有者が shell になり、
+# アプリから見えないことがあります。
+adb shell am start -W -n "$APP_ID/.MainActivity"
+adb shell am force-stop "$APP_ID"
+
+MODEL_DIR="/storage/emulated/0/Android/data/$APP_ID/files/models"
+adb push "$MODEL_PATH" "$MODEL_DIR/"
+adb shell ls -lh "$MODEL_DIR/"
+
+# 必要ならアプリを再起動して起動
+adb shell am force-stop "$APP_ID"
+adb shell am start -W -n "$APP_ID/.MainActivity"
+```
+
+### 3) 初回起動時の挙動
+
+- `.litertlm` が存在すれば自動検出して最初のモデルを初期化します。
+- 見つからない場合は、モデル配置先パスを画面に表示して待機します。
+
+以前に `adb shell mkdir` でディレクトリを作っていて、`adb shell ls` ではモデルが
+見えるのにアプリが "Model file not found" を表示し続ける場合は、shell所有の
+ディレクトリを削除してから手順2をやり直してください。
+
+```bash
+adb shell rm -rf "/storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models"
+```
+
+### 任意: モデル差し替え後に最適化キャッシュを削除
+
+```bash
+adb shell rm -f /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models/*.xnnpack_cache_*
+```
+
+### GitHub Release に同梱推奨のファイル
+
+- `gemma-bite-v1.0.0.apk`
+- `SHA256SUMS`（APKのチェックサム）
+- `README.md` と `README_JA.md`、または上記の GitHub Release 手順を抜き出した短い `INSTALL.md` / `INSTALL_JA.md`
+
+Gemma の `.litertlm` モデルファイルは、モデル提供元のライセンスや再配布条件で明示的に許可されている場合を除き、GitHub Release には添付しないでください。
 
 ## 現在の範囲
 

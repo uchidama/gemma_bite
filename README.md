@@ -94,9 +94,23 @@ huggingface-cli download litert-community/gemma-4-E2B-it-litert-lm --local-dir .
 
 ### Place the Model on Android
 
+Install or run the app once before pushing the model so Android creates the
+app-owned external files directory. Do not create the `models` directory with
+`adb shell mkdir`; on recent Android versions that can make the directory owned
+by `shell`, and the app may not be able to list the model file.
+
 ```bash
-adb shell mkdir -p /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models
-adb push ./models/gemma-4-E2B-it-litert-lm/gemma-4-E2B-it.litertlm /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models/
+APP_ID=com.eyuras.gemma_bite
+MODEL_DIR="/storage/emulated/0/Android/data/$APP_ID/files/models"
+MODEL_PATH=./models/gemma-4-E2B-it-litert-lm/gemma-4-E2B-it.litertlm
+
+# Start the installed app once. It will create $MODEL_DIR and show
+# "Model file not found" until the model is pushed.
+adb shell am start -W -n "$APP_ID/.MainActivity"
+adb shell am force-stop "$APP_ID"
+
+adb push "$MODEL_PATH" "$MODEL_DIR/"
+adb shell ls -lh "$MODEL_DIR/"
 ```
 
 If you need to force model re-optimization after changing the model file:
@@ -124,6 +138,86 @@ To build an APK:
 ```bash
 flutter build apk
 ```
+
+## Live Demo via GitHub Releases (Android APK)
+
+If you distribute the Android APK on GitHub Releases, users still need to place a Gemma `.litertlm` model file on the device.
+The APK alone cannot run inference.
+
+Build the release APK and rename the generated file before uploading it:
+
+```bash
+flutter build apk --release
+cp build/app/outputs/flutter-apk/app-release.apk gemma-bite-v1.0.0.apk
+shasum -a 256 gemma-bite-v1.0.0.apk > SHA256SUMS
+```
+
+This project currently signs the Android `release` build with the debug signing config, so the APK is suitable for demos and manual testing, not Play Store distribution.
+
+### 1) Download release assets
+
+- Download `gemma-bite-v1.0.0.apk` from your GitHub Release.
+- Download `gemma-4-E2B-it.litertlm` separately from Hugging Face (license and access rules apply):
+  <https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm>
+
+For example, with the Hugging Face CLI:
+
+```bash
+pip install huggingface_hub
+huggingface-cli login
+huggingface-cli download litert-community/gemma-4-E2B-it-litert-lm --local-dir ./models/gemma-4-E2B-it-litert-lm
+```
+
+### 2) Install APK and place model with `adb`
+
+```bash
+APP_ID=com.eyuras.gemma_bite
+APK_PATH=./gemma-bite-v1.0.0.apk
+MODEL_PATH=./models/gemma-4-E2B-it-litert-lm/gemma-4-E2B-it.litertlm
+
+adb install -r "$APK_PATH"
+
+# Launch once so the app creates its own Android/data directory and models
+# subdirectory. Do not create this directory with adb shell mkdir; that can leave
+# it owned by shell and invisible to the app.
+adb shell am start -W -n "$APP_ID/.MainActivity"
+adb shell am force-stop "$APP_ID"
+
+MODEL_DIR="/storage/emulated/0/Android/data/$APP_ID/files/models"
+adb push "$MODEL_PATH" "$MODEL_DIR/"
+adb shell ls -lh "$MODEL_DIR/"
+
+# Optional: restart and launch app
+adb shell am force-stop "$APP_ID"
+adb shell am start -W -n "$APP_ID/.MainActivity"
+```
+
+### 3) First launch behavior
+
+- If the model exists, the app auto-detects `.litertlm` files and initializes the first one.
+- If not found, the app shows the expected model directory and waits for model placement.
+
+If you previously created the directory with `adb shell mkdir` and the app still
+shows "Model file not found" even though `adb shell ls` shows the model, remove
+the shell-owned directory and repeat step 2:
+
+```bash
+adb shell rm -rf "/storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models"
+```
+
+### Optional: clear model optimization cache after model replacement
+
+```bash
+adb shell rm -f /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models/*.xnnpack_cache_*
+```
+
+### Recommended files to attach in GitHub Release
+
+- `gemma-bite-v1.0.0.apk`
+- `SHA256SUMS` (checksum file for APK)
+- `README.md` and `README_JA.md`, or a short `INSTALL.md` / `INSTALL_JA.md` copied from the GitHub Release instructions above
+
+Do not attach the Gemma `.litertlm` model file unless the model provider's license and redistribution terms explicitly allow it.
 
 ## Current Scope
 
