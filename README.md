@@ -143,24 +143,14 @@ To build an APK:
 flutter build apk
 ```
 
-## Live Demo via GitHub Releases (Android APK)
+## Install the Android Demo APK
 
-If you distribute the Android APK on GitHub Releases, users still need to place a Gemma `.litertlm` model file on the device.
+The Android APK still needs a Gemma `.litertlm` model file on the device.
 The APK alone cannot run inference.
-
-Build the release APK and rename the generated file before uploading it:
-
-```bash
-flutter build apk --release
-cp build/app/outputs/flutter-apk/app-release.apk gemma-bite-v1.0.0.apk
-shasum -a 256 gemma-bite-v1.0.0.apk > SHA256SUMS
-```
-
-This project currently signs the Android `release` build with the debug signing config, so the APK is suitable for demos and manual testing, not Play Store distribution.
 
 ### 1) Download release assets
 
-- Download `gemma-bite-v1.0.0.apk` from your GitHub Release.
+- Download `gemma-bite-v1.0.0.apk` from the GitHub Release.
 - Download `gemma-4-E2B-it.litertlm` from Hugging Face (license and access rules apply):
   <https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/blob/main/gemma-4-E2B-it.litertlm>
 
@@ -210,13 +200,7 @@ cleanup command in step 2 and repeat the install.
 adb shell rm -f /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models/*.xnnpack_cache_*
 ```
 
-### Recommended files to attach in GitHub Release
-
-- `gemma-bite-v1.0.0.apk`
-- `SHA256SUMS` (checksum file for APK)
-- `README.md` and `README_JA.md`, or a short `INSTALL.md` / `INSTALL_JA.md` copied from the GitHub Release instructions above
-
-Do not attach the Gemma `.litertlm` model file unless the model provider's license and redistribution terms explicitly allow it.
+Release build notes for maintainers are in [docs/RELEASE.md](docs/RELEASE.md).
 
 ## Current Scope
 

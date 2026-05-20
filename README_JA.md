@@ -139,20 +139,10 @@ APK をビルドする場合:
 flutter build apk
 ```
 
-## GitHub Release の Live デモ手順（Android APK）
+## Android デモAPKのインストール
 
-Android APK を GitHub Release で配布する場合でも、Gemma の `.litertlm` モデルファイル配置は必須です。
+Android APK で推論を実行するには、Gemma の `.litertlm` モデルファイル配置が必要です。
 APK だけでは推論を実行できません。
-
-Release 用 APK をビルドし、アップロード前にファイル名を変更します。
-
-```bash
-flutter build apk --release
-cp build/app/outputs/flutter-apk/app-release.apk gemma-bite-v1.0.0.apk
-shasum -a 256 gemma-bite-v1.0.0.apk > SHA256SUMS
-```
-
-現在の Android `release` ビルドは debug signing config で署名しています。そのため、この APK はデモや手動テスト向けであり、Play Store 配布向けではありません。
 
 ### 1) 配布物を取得
 
@@ -207,13 +197,7 @@ adb shell am start -W -n "$APP_ID/.MainActivity"
 adb shell rm -f /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models/*.xnnpack_cache_*
 ```
 
-### GitHub Release に同梱推奨のファイル
-
-- `gemma-bite-v1.0.0.apk`
-- `SHA256SUMS`（APKのチェックサム）
-- `README.md` と `README_JA.md`、または上記の GitHub Release 手順を抜き出した短い `INSTALL.md` / `INSTALL_JA.md`
-
-Gemma の `.litertlm` モデルファイルは、モデル提供元のライセンスや再配布条件で明示的に許可されている場合を除き、GitHub Release には添付しないでください。
+メンテナー向けのRelease作成手順は [docs/RELEASE_JA.md](docs/RELEASE_JA.md) にあります。
 
 ## 現在の範囲
 
