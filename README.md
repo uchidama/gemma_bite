@@ -200,6 +200,20 @@ cleanup command in step 2 and repeat the install.
 adb shell rm -f /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models/*.xnnpack_cache_*
 ```
 
+### Tested Device
+
+This release was tested with:
+
+- Google Pixel 10 Pro XL
+- Android 16
+- arm64-v8a
+- 16GB RAM class device
+- Gemma model: `gemma-4-E2B-it.litertlm`
+
+Other Android devices may work, but have not been verified for this release.
+The first model initialization may take a while and requires enough free storage
+for LiteRT/XNNPACK cache files.
+
 Release build notes for maintainers are in [docs/RELEASE.md](docs/RELEASE.md).
 
 ## Current Scope

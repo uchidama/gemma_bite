@@ -197,6 +197,20 @@ adb shell am start -W -n "$APP_ID/.MainActivity"
 adb shell rm -f /storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models/*.xnnpack_cache_*
 ```
 
+### テスト済みデバイス
+
+このReleaseは次の端末で動作確認しています。
+
+- Google Pixel 10 Pro XL
+- Android 16
+- arm64-v8a
+- 16GB RAMクラスの端末
+- Gemma model: `gemma-4-E2B-it.litertlm`
+
+その他のAndroid端末でも動作する可能性はありますが、このReleaseでは未検証です。
+初回のモデル初期化には時間がかかる場合があり、LiteRT/XNNPACKのキャッシュ作成用に
+十分な空き容量が必要です。
+
 メンテナー向けのRelease作成手順は [docs/RELEASE_JA.md](docs/RELEASE_JA.md) にあります。
 
 ## 現在の範囲
