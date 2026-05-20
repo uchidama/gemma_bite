@@ -82,11 +82,12 @@ Gemma Bite は LiteRT-LM 用の Gemma 4 E2B モデルで開発しています。
 
 <https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm>
 
-```bash
-pip install huggingface_hub
-huggingface-cli login
-huggingface-cli download litert-community/gemma-4-E2B-it-litert-lm --local-dir ./models/gemma-4-E2B-it-litert-lm
-```
+Hugging Face から次のモデルファイルをダウンロードしてください。
+
+<https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/blob/main/gemma-4-E2B-it.litertlm>
+
+以下のインストールコマンドを使う場合は、ダウンロードした
+`gemma-4-E2B-it.litertlm` を作業ディレクトリに置いてください。
 
 ### Android 端末へのモデル配置
 
@@ -98,14 +99,17 @@ app-owned な external files ディレクトリを作らせてください。`ad
 ```bash
 APP_ID=com.eyuras.gemma_bite
 MODEL_DIR="/storage/emulated/0/Android/data/$APP_ID/files/models"
-MODEL_PATH=./models/gemma-4-E2B-it-litert-lm/gemma-4-E2B-it.litertlm
+MODEL_PATH=./gemma-4-E2B-it.litertlm
+MODEL_NAME=gemma-4-E2B-it.litertlm
 
 # インストール済みのアプリを一度起動します。アプリが $MODEL_DIR を作成し、
 # モデル配置までは "Model file not found" を表示します。
 adb shell am start -W -n "$APP_ID/.MainActivity"
+sleep 3
 adb shell am force-stop "$APP_ID"
 
-adb push "$MODEL_PATH" "$MODEL_DIR/"
+adb shell ls -ld "$MODEL_DIR"
+adb push -Z "$MODEL_PATH" "$MODEL_DIR/$MODEL_NAME"
 adb shell ls -lh "$MODEL_DIR/"
 ```
 
@@ -153,23 +157,23 @@ shasum -a 256 gemma-bite-v1.0.0.apk > SHA256SUMS
 ### 1) 配布物を取得
 
 - GitHub Release から `gemma-bite-v1.0.0.apk` をダウンロード
-- Hugging Face から別途 `gemma-4-E2B-it.litertlm` を取得（ライセンス・利用条件に従ってください）
-  <https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm>
+- Hugging Face から `gemma-4-E2B-it.litertlm` をダウンロード（ライセンス・利用条件に従ってください）
+  <https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/blob/main/gemma-4-E2B-it.litertlm>
 
-Hugging Face CLI を使う場合:
-
-```bash
-pip install huggingface_hub
-huggingface-cli login
-huggingface-cli download litert-community/gemma-4-E2B-it-litert-lm --local-dir ./models/gemma-4-E2B-it-litert-lm
-```
+この2つのファイルを同じローカルディレクトリに置いてから、次のコマンドを実行してください。
 
 ### 2) `adb` でAPKインストールとモデル配置
 
 ```bash
 APP_ID=com.eyuras.gemma_bite
 APK_PATH=./gemma-bite-v1.0.0.apk
-MODEL_PATH=./models/gemma-4-E2B-it-litert-lm/gemma-4-E2B-it.litertlm
+MODEL_PATH=./gemma-4-E2B-it.litertlm
+MODEL_DIR="/storage/emulated/0/Android/data/$APP_ID/files/models"
+MODEL_NAME=gemma-4-E2B-it.litertlm
+
+# 再インストール・やり直し時の任意クリーンアップ。
+# 以前にpushしたモデルファイルを含む、アプリ専用の外部データを削除します。
+adb shell rm -rf "/storage/emulated/0/Android/data/$APP_ID"
 
 adb install -r "$APK_PATH"
 
@@ -177,14 +181,13 @@ adb install -r "$APK_PATH"
 # サブディレクトリを作らせます。adb shell mkdir で作ると所有者が shell になり、
 # アプリから見えないことがあります。
 adb shell am start -W -n "$APP_ID/.MainActivity"
+sleep 3
 adb shell am force-stop "$APP_ID"
 
-MODEL_DIR="/storage/emulated/0/Android/data/$APP_ID/files/models"
-adb push "$MODEL_PATH" "$MODEL_DIR/"
+adb shell ls -ld "$MODEL_DIR"
+adb push -Z "$MODEL_PATH" "$MODEL_DIR/$MODEL_NAME"
 adb shell ls -lh "$MODEL_DIR/"
 
-# 必要ならアプリを再起動して起動
-adb shell am force-stop "$APP_ID"
 adb shell am start -W -n "$APP_ID/.MainActivity"
 ```
 
@@ -195,11 +198,8 @@ adb shell am start -W -n "$APP_ID/.MainActivity"
 
 以前に `adb shell mkdir` でディレクトリを作っていて、`adb shell ls` ではモデルが
 見えるのにアプリが "Model file not found" を表示し続ける場合は、shell所有の
-ディレクトリを削除してから手順2をやり直してください。
-
-```bash
-adb shell rm -rf "/storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models"
-```
+ディレクトリが残っている可能性があります。手順2のクリーンアップコマンドを実行してから、
+インストールをやり直してください。
 
 ### 任意: モデル差し替え後に最適化キャッシュを削除
 

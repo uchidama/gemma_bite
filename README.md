@@ -86,11 +86,12 @@ Gemma Bite is developed with the LiteRT-LM Gemma 4 E2B model:
 
 <https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm>
 
-```bash
-pip install huggingface_hub
-huggingface-cli login
-huggingface-cli download litert-community/gemma-4-E2B-it-litert-lm --local-dir ./models/gemma-4-E2B-it-litert-lm
-```
+Download this model file from Hugging Face:
+
+<https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/blob/main/gemma-4-E2B-it.litertlm>
+
+Place the downloaded `gemma-4-E2B-it.litertlm` file in your working directory
+when using the install commands below.
 
 ### Place the Model on Android
 
@@ -102,14 +103,17 @@ by `shell`, and the app may not be able to list the model file.
 ```bash
 APP_ID=com.eyuras.gemma_bite
 MODEL_DIR="/storage/emulated/0/Android/data/$APP_ID/files/models"
-MODEL_PATH=./models/gemma-4-E2B-it-litert-lm/gemma-4-E2B-it.litertlm
+MODEL_PATH=./gemma-4-E2B-it.litertlm
+MODEL_NAME=gemma-4-E2B-it.litertlm
 
 # Start the installed app once. It will create $MODEL_DIR and show
 # "Model file not found" until the model is pushed.
 adb shell am start -W -n "$APP_ID/.MainActivity"
+sleep 3
 adb shell am force-stop "$APP_ID"
 
-adb push "$MODEL_PATH" "$MODEL_DIR/"
+adb shell ls -ld "$MODEL_DIR"
+adb push -Z "$MODEL_PATH" "$MODEL_DIR/$MODEL_NAME"
 adb shell ls -lh "$MODEL_DIR/"
 ```
 
@@ -157,23 +161,23 @@ This project currently signs the Android `release` build with the debug signing 
 ### 1) Download release assets
 
 - Download `gemma-bite-v1.0.0.apk` from your GitHub Release.
-- Download `gemma-4-E2B-it.litertlm` separately from Hugging Face (license and access rules apply):
-  <https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm>
+- Download `gemma-4-E2B-it.litertlm` from Hugging Face (license and access rules apply):
+  <https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/blob/main/gemma-4-E2B-it.litertlm>
 
-For example, with the Hugging Face CLI:
-
-```bash
-pip install huggingface_hub
-huggingface-cli login
-huggingface-cli download litert-community/gemma-4-E2B-it-litert-lm --local-dir ./models/gemma-4-E2B-it-litert-lm
-```
+Put both files in the same local directory before running the commands below.
 
 ### 2) Install APK and place model with `adb`
 
 ```bash
 APP_ID=com.eyuras.gemma_bite
 APK_PATH=./gemma-bite-v1.0.0.apk
-MODEL_PATH=./models/gemma-4-E2B-it-litert-lm/gemma-4-E2B-it.litertlm
+MODEL_PATH=./gemma-4-E2B-it.litertlm
+MODEL_DIR="/storage/emulated/0/Android/data/$APP_ID/files/models"
+MODEL_NAME=gemma-4-E2B-it.litertlm
+
+# Optional cleanup for reinstall/retry. This removes the app-owned external data,
+# including any previously pushed model files.
+adb shell rm -rf "/storage/emulated/0/Android/data/$APP_ID"
 
 adb install -r "$APK_PATH"
 
@@ -181,14 +185,13 @@ adb install -r "$APK_PATH"
 # subdirectory. Do not create this directory with adb shell mkdir; that can leave
 # it owned by shell and invisible to the app.
 adb shell am start -W -n "$APP_ID/.MainActivity"
+sleep 3
 adb shell am force-stop "$APP_ID"
 
-MODEL_DIR="/storage/emulated/0/Android/data/$APP_ID/files/models"
-adb push "$MODEL_PATH" "$MODEL_DIR/"
+adb shell ls -ld "$MODEL_DIR"
+adb push -Z "$MODEL_PATH" "$MODEL_DIR/$MODEL_NAME"
 adb shell ls -lh "$MODEL_DIR/"
 
-# Optional: restart and launch app
-adb shell am force-stop "$APP_ID"
 adb shell am start -W -n "$APP_ID/.MainActivity"
 ```
 
@@ -198,12 +201,8 @@ adb shell am start -W -n "$APP_ID/.MainActivity"
 - If not found, the app shows the expected model directory and waits for model placement.
 
 If you previously created the directory with `adb shell mkdir` and the app still
-shows "Model file not found" even though `adb shell ls` shows the model, remove
-the shell-owned directory and repeat step 2:
-
-```bash
-adb shell rm -rf "/storage/emulated/0/Android/data/com.eyuras.gemma_bite/files/models"
-```
+shows "Model file not found" even though `adb shell ls` shows the model, run the
+cleanup command in step 2 and repeat the install.
 
 ### Optional: clear model optimization cache after model replacement
 
